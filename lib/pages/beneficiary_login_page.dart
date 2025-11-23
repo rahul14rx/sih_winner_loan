@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:loan2/pages/beneficiary_dashboard.dart';
 
 // ---------------------------------------------------------------------------
 // NOTE: Ensure you have your api.dart, loan_process_page.dart, etc. set up
@@ -86,11 +87,14 @@ class _BeneficiaryLoginPageState extends State<BeneficiaryLoginPage> {
       const SnackBar(content: Text('OTP Verified! Logging in...')),
     );
 
-    Navigator.pushNamedAndRemoveUntil(
+    Navigator.pushAndRemoveUntil(
       context,
-      '/loan-process',
+      MaterialPageRoute(
+        builder: (context) => BeneficiaryDashboard(
+          userId: _phoneController.text.trim(),
+        ),
+      ),
           (route) => false,
-      arguments: {'userId': _phoneController.text.trim()},
     );
   }
 
