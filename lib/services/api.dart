@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 // Change this to your Flask host (10.0.2.2 for Android emulator, or your local IP)
-const String kBaseUrl = 'http://192.168.0.116:5001/'; // MAKE SURE THIS IS CORRECT
+const String kBaseUrl = 'http://192.168.1.11:5001/'; // MAKE SURE THIS IS CORRECT
 
 Future<Map<String, dynamic>> postJson(
     String path, {

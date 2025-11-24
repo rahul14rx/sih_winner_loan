@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:loan2/services/beneficiary_service.dart';
 import 'package:loan2/models/beneficiary_loan.dart';
-import 'package:loan2/pages/loan_detail_screen.dart'; // We will build this next
+import 'package:loan2/pages/loan_detail_screen.dart';
+import 'package:loan2/widgets/beneficiary_drawer.dart'; // Ensure this file exists from previous step
+import 'package:loan2/services/sync_service.dart';
+import 'package:loan2/services/database_helper.dart';
 
 class BeneficiaryDashboard extends StatefulWidget {
   final String userId;
@@ -17,10 +21,57 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
   List<BeneficiaryLoan> _loans = [];
   bool _isLoading = true;
 
+  // Added State Variables for Sync & Connectivity
+  bool isOnline = false;
+  int unsyncedCount = 0;
+  StreamSubscription? _syncSubscription;
+  StreamSubscription? _onlineStatusSubscription;
+
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _initPage();
+
+    // Listen for background syncs to refresh UI
+    _syncSubscription = SyncService.onSync.listen((_) {
+      debugPrint("🔄 UI Refresh triggered by background sync");
+      _loadData();
+      _updateUnsyncedCount();
+    });
+
+    // Listen for connectivity changes
+    _onlineStatusSubscription = SyncService.onOnlineStatusChanged.listen((online) {
+      if (online != isOnline) {
+        if (mounted) {
+          setState(() {
+            isOnline = online;
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    _onlineStatusSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initPage() async {
+    // Initial check
+    isOnline = await SyncService.realInternetCheck();
+    await _updateUnsyncedCount();
+    await _loadData();
+  }
+
+  Future<void> _updateUnsyncedCount() async {
+    final count = await DatabaseHelper.instance.getQueuedForUploadCount();
+    if (mounted) {
+      setState(() {
+        unsyncedCount = count;
+      });
+    }
   }
 
   Future<void> _loadData() async {
@@ -28,7 +79,10 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
       final data = await _service.fetchUserLoans(widget.userId);
       if (mounted) setState(() { _loans = data; _isLoading = false; });
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        // Optionally handle error (e.g., show cached data message)
+      }
     }
   }
 
@@ -37,21 +91,86 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('My Verification Requests', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'My Requests',
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: true,
+        iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          // 1. Unsynced Count Indicator (Only shows if there are pending uploads)
+          if (unsyncedCount > 0)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+              decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.orange[200]!)
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.sync_problem, color: Colors.orange, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    "$unsyncedCount Pending",
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+
+          // 2. Online/Offline Indicator
+          Container(
+            margin: const EdgeInsets.only(right: 16, left: 8, top: 12, bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            decoration: BoxDecoration(
+                color: isOnline ? Colors.green[50] : Colors.red[50],
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: isOnline ? Colors.green[200]! : Colors.red[200]!)
+            ),
+            child: Row(
+              children: [
+                Icon(
+                    isOnline ? Icons.wifi : Icons.wifi_off,
+                    color: isOnline ? Colors.green : Colors.red,
+                    size: 16
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isOnline ? "Online" : "Offline",
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isOnline ? Colors.green[800] : Colors.red[800]
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
+
+      drawer: BeneficiaryDrawer(userId: widget.userId),
+
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _loans.isEmpty
-          ? _buildEmptyState()
-          : ListView.separated(
-        padding: const EdgeInsets.all(20),
-        itemCount: _loans.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 16),
-        itemBuilder: (context, index) => _buildLoanCard(_loans[index]),
+          : RefreshIndicator(
+        onRefresh: () async {
+          await _loadData();
+          await _updateUnsyncedCount();
+        },
+        child: _loans.isEmpty
+            ? _buildEmptyState()
+            : ListView.separated(
+          padding: const EdgeInsets.all(20),
+          itemCount: _loans.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 16),
+          itemBuilder: (context, index) => _buildLoanCard(_loans[index]),
+        ),
       ),
     );
   }
@@ -64,19 +183,20 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
           Icon(Icons.assignment_outlined, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text("No active loans found.", style: TextStyle(color: Colors.grey[600], fontSize: 16)),
+          const SizedBox(height: 8),
+          Text("User ID: ${widget.userId}", style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
   Widget _buildLoanCard(BeneficiaryLoan loan) {
-    // Calculate progress based on real backend status
+    // Logic to calculate progress
     int totalSteps = loan.processes.length;
     int completedSteps = loan.processes.where((p) => p.status == 'verified').length;
     double progress = totalSteps > 0 ? completedSteps / totalSteps : 0.0;
     int percentage = (progress * 100).toInt();
 
-    // Determine status color
     Color statusColor = Colors.orange;
     String statusText = "Pending";
     if (percentage > 0 && percentage < 100) {
@@ -94,7 +214,11 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
           MaterialPageRoute(
             builder: (_) => LoanDetailScreen(loan: loan),
           ),
-        ).then((_) => _loadData()); // Refresh on return
+        ).then((_) {
+          // Refresh data when returning from details page
+          _loadData();
+          _updateUnsyncedCount();
+        });
       },
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -141,7 +265,7 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
             ),
             const SizedBox(height: 4),
             Text(
-              "Beneficiary: ${loan.userId}", // Assuming userId is Phone/Name
+              "Beneficiary: ${loan.userId}",
               style: TextStyle(color: Colors.grey[600], fontSize: 14),
             ),
             const SizedBox(height: 20),

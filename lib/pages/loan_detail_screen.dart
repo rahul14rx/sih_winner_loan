@@ -1,28 +1,115 @@
 import 'package:flutter/material.dart';
 import 'package:loan2/models/beneficiary_loan.dart';
-import 'package:loan2/pages/verification_step_page.dart'; // New flow page
+import 'package:loan2/pages/verification_step_page.dart';
+import 'package:loan2/services/beneficiary_service.dart';
+import 'package:loan2/services/database_helper.dart';
 
-class LoanDetailScreen extends StatelessWidget {
+class LoanDetailScreen extends StatefulWidget {
   final BeneficiaryLoan loan;
 
   const LoanDetailScreen({super.key, required this.loan});
 
   @override
+  State<LoanDetailScreen> createState() => _LoanDetailScreenState();
+}
+
+class _LoanDetailScreenState extends State<LoanDetailScreen> {
+  late BeneficiaryLoan _currentLoan;
+  final BeneficiaryService _service = BeneficiaryService();
+  bool _isRefreshing = false;
+
+  // Tracks which steps are saved locally (offline) but not yet synced
+  Map<String, bool> _localUploads = {};
+
+  // Mock utilization amount for demo (In real app, fetch from API)
+  double _amountUsed = 0; 
+
+  @override
+  void initState() {
+    super.initState();
+    _currentLoan = widget.loan;
+    
+    // Refresh data from API when page enters
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshLoanData();
+    });
+  }
+
+  // Check local DB to see if we have pending uploads for this loan
+  Future<void> _checkLocalUploads() async {
+    final queued = await DatabaseHelper.instance.getQueuedForUpload();
+    final Map<String, bool> statusMap = {};
+
+    for (var row in queued) {
+      final pid = row[DatabaseHelper.colProcessId] as String?;
+      final lid = row[DatabaseHelper.colLoanId] as String?;
+
+      // If the local DB has an entry for this Loan ID & Process ID, mark it as locally done
+      if (pid != null && lid == _currentLoan.loanId) {
+        statusMap[pid] = true;
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _localUploads = statusMap;
+      });
+    }
+  }
+
+  Future<void> _refreshLoanData() async {
+    setState(() => _isRefreshing = true);
+
+    // 1. Re-check local DB status (Critical for offline updates)
+    await _checkLocalUploads();
+
+    // 2. Fetch latest server status
+    try {
+      print("Fetching details for loan ID: ${_currentLoan.loanId}");
+      final updatedLoan = await _service.fetchLoanDetails(_currentLoan.loanId);
+      print("Fetched loan details: ${updatedLoan.applicantName}, ${updatedLoan.status}");
+
+      if (mounted) {
+        setState(() {
+          _currentLoan = updatedLoan;
+          _amountUsed = _currentLoan.amount * 0.45; // Mock utilization
+          _isRefreshing = false;
+        });
+      }
+    } catch (e) {
+      print("Error fetching loan details: $e");
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to refresh: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Calculate stats
-    int completed = loan.processes.where((p) => p.status == 'verified').length;
-    int total = loan.processes.length;
-    double progress = total > 0 ? completed / total : 0.0;
+    double sanctionedAmount = _currentLoan.amount;
+    double utilizationPercent = sanctionedAmount > 0 ? (_amountUsed / sanctionedAmount).clamp(0.0, 1.0) : 0.0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Verification Details', style: TextStyle(color: Colors.black)),
+        title: const Text('Verification Page', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshLoanData,
+          )
+        ],
       ),
-      body: SingleChildScrollView(
+      body: _isRefreshing
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -32,7 +119,7 @@ class LoanDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
               ),
               child: Column(
@@ -42,201 +129,219 @@ class LoanDetailScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text("Loan Utilization", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      Text("${(progress * 100).toInt()}% Complete", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      Text("${(utilizationPercent * 100).toInt()}% · Provisional", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                     ],
                   ),
-                  const SizedBox(height: 15),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 10,
-                      backgroundColor: Colors.grey[100],
-                      valueColor: const AlwaysStoppedAnimation(Color(0xFF138808)),
-                    ),
+                  const SizedBox(height: 12),
+                  Stack(
+                    children: [
+                      Container(
+                        height: 10,
+                        width: double.infinity,
+                        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(5)),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: utilizationPercent,
+                        child: Container(
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF435E91),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildInfoColumn("Loan ID", loan.loanId),
-                      _buildInfoColumn("Status", progress == 1 ? "Verified" : "In Progress"),
+                      Text("₹${_amountUsed.toInt()} of ₹${sanctionedAmount.toInt()} used", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+                      Text("${(utilizationPercent * 100).toInt()}% · Provisional", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                     ],
-                  )
+                  ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 25),
-            const Text("Required Steps", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF000080))),
-            const SizedBox(height: 15),
+            const SizedBox(height: 20),
 
-            // 2. Dynamic Steps List
-            ...loan.processes.map((step) => _buildStepTile(context, step)),
+            // 2. Loan Details Card
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+              ),
+              child: Column(
+                children: [
+                  // Dynamic Details from _currentLoan
+                  _buildDetailRow("Beneficiary", _currentLoan.applicantName),
+                  _buildDetailRow("Loan ID", _currentLoan.loanId),
+                  _buildDetailRow("Type", _currentLoan.loanType),
+                  _buildDetailRow("Scheme", _currentLoan.scheme),
+                  _buildDetailRow("Date Applied", _currentLoan.dateApplied),
+                  _buildDetailRow("Sanctioned Amount", "₹${_currentLoan.amount.toInt()}"),
+                  _buildDetailRow("Status", _currentLoan.status),
+                ],
+              ),
+            ),
 
             const SizedBox(height: 30),
 
-            // 3. Start Button
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                onPressed: () => _showRulesSheet(context, loan.processes.first), // Start with first step or logic
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF138808),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 5,
-                ),
-                child: const Text("Start Verification", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
+            // 3. Start Verification Button
+            Builder(
+                builder: (context) {
+                  ProcessStep? nextStep;
+                  bool allDone = true;
+
+                  for (var step in _currentLoan.processes) {
+                    bool isLocallyDone = _localUploads[step.id] == true;
+                    bool isServerDone = step.status == 'verified' || step.status == 'pending_review';
+
+                    if (!isLocallyDone && !isServerDone) {
+                      nextStep = step;
+                      allDone = false;
+                      break;
+                    }
+                  }
+
+                  if (allDone) {
+                    return SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton(
+                        onPressed: null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          disabledBackgroundColor: Colors.green.withOpacity(0.6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text("All Steps Completed", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                      ),
+                    );
+                  }
+
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        if (nextStep != null) {
+                          _startVerification(nextStep);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF435E91),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 5,
+                      ),
+                      child: Text("Start ${nextStep!.whatToDo}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ),
+                  );
+                }
             ),
+
+            const SizedBox(height: 30),
+
+            // 4. Steps List
+            const Text("Steps Checklist", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const SizedBox(height: 10),
+            ..._currentLoan.processes.map((step) => _buildStepTile(step)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildInfoColumn(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-      ],
-    );
+  void _startVerification(dynamic step) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VerificationStepPage(
+          loanId: _currentLoan.loanId,
+          step: step,
+          userId: _currentLoan.userId,
+        ),
+      ),
+    ).then((result) {
+      if (result == true) {
+        _refreshLoanData();
+      }
+    });
   }
 
-  Widget _buildStepTile(BuildContext context, ProcessStep step) {
-    bool isVerified = step.status == 'verified';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isVerified ? Colors.green.withOpacity(0.5) : Colors.transparent),
-      ),
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: isVerified ? Colors.green[50] : Colors.blue[50],
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              step.dataType == 'video' ? Icons.videocam : Icons.camera_alt,
-              color: isVerified ? Colors.green : Colors.blue,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(step.whatToDo, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                const SizedBox(height: 4),
-                Text(
-                  isVerified ? "Completed" : "Pending • ${step.dataType.toUpperCase()}",
-                  style: TextStyle(color: isVerified ? Colors.green : Colors.grey[600], fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          if (isVerified)
-            const Icon(Icons.check_circle, color: Colors.green),
+          SizedBox(width: 120, child: Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 14))),
+          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87), textAlign: TextAlign.right)),
         ],
       ),
     );
   }
 
-  // --- Rules Bottom Sheet (From your reference) ---
-  void _showRulesSheet(BuildContext context, ProcessStep firstStep) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        bool agreed = false;
-        return StatefulBuilder(
-            builder: (context, setState) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(child: Container(height: 4, width: 40, color: Colors.grey[300])),
-                    const SizedBox(height: 20),
-                    const Text("Rules & Regulations", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF000080))),
-                    const SizedBox(height: 16),
-                    _buildRuleItem("Funds must only be used for the sanctioned purpose."),
-                    _buildRuleItem("Upload original invoices/bills for all major purchases."),
-                    _buildRuleItem("Geo-tagging is mandatory for all photos."),
-                    _buildRuleItem("Misuse of funds can lead to legal action."),
-                    const SizedBox(height: 20),
-                    CheckboxListTile(
-                      value: agreed,
-                      onChanged: (v) => setState(() => agreed = v!),
-                      title: const Text("I agree and give consent to proceed.", style: TextStyle(fontSize: 14)),
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: const Color(0xFF138808),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: agreed
-                            ? () {
-                          Navigator.pop(context); // Close sheet
-                          // Navigate to the Verification Page for the specific loan
-                          // In a real app, you might loop through steps. For now, we open the first pending one or just the list.
-                          // Let's navigate to the First Pending Step or just refresh.
-                          // For better UX, we navigate to the step page for the first step.
-                          Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => VerificationStepPage(
-                                    loanId: loan.loanId,
-                                    step: firstStep,
-                                    userId: loan.userId,
-                                  )
-                              )
-                          );
-                        }
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF138808),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text("Start Verification"),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-        );
-      },
-    );
-  }
+  Widget _buildStepTile(dynamic step) {
+    bool isLocallyDone = _localUploads[step.id] == true;
+    bool isServerDone = step.status == 'verified' || step.status == 'pending_review';
+    bool isDone = isServerDone || isLocallyDone;
 
-  Widget _buildRuleItem(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+    String statusText = "Pending";
+    Color statusColor = Colors.grey;
+    IconData statusIcon = Icons.radio_button_unchecked;
+
+    if (isLocallyDone) {
+      statusText = "Queued (Offline)";
+      statusColor = Colors.orange;
+      statusIcon = Icons.cloud_upload;
+    } else if (step.status == 'verified') {
+      statusText = "Verified";
+      statusColor = Colors.green;
+      statusIcon = Icons.check_circle;
+    } else if (step.status == 'pending_review') {
+      statusText = "In Review";
+      statusColor = Colors.blue;
+      statusIcon = Icons.access_time_filled;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isDone ? statusColor.withOpacity(0.3) : Colors.grey.shade200),
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("• ", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          Expanded(child: Text(text, style: TextStyle(color: Colors.grey[700], height: 1.4))),
+          Icon(statusIcon, color: statusColor, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(step.whatToDo, style: TextStyle(color: isDone ? Colors.black87 : Colors.grey[600], fontWeight: isDone ? FontWeight.w600 : FontWeight.normal)),
+                if (isDone)
+                  Text(statusText, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          if (!isDone)
+            ElevatedButton(
+              onPressed: () => _startVerification(step),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF138808),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                minimumSize: const Size(60, 30),
+                elevation: 0,
+              ),
+              child: const Text("Start", style: TextStyle(fontSize: 12, color: Colors.white)),
+            ),
         ],
       ),
     );

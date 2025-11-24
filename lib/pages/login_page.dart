@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:loan2/pages/beneficiary_login_page.dart';
 import 'package:loan2/pages/bank_dashboard_page.dart';
+import 'package:loan2/services/api.dart'; // Import api service
 
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
@@ -57,18 +58,52 @@ class LoginPage extends StatelessWidget {
             ),
             ElevatedButton(
               child: const Text('Login'),
-              onPressed: () {
-                // 1. Close the dialog first
-                Navigator.of(context).pop();
+              onPressed: () async {
+                // Validate inputs
+                final loginId = idController.text.trim();
+                final password = passController.text.trim();
 
-                // 2. TODO: Add real API validation here later
-                // For now, just navigate to the dashboard directly
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const BankDashboardPage(),
-                  ),
-                );
+                if (loginId.isEmpty || password.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter both ID and Password')),
+                  );
+                  return;
+                }
+
+                // Show loading indicator or disable button?
+                // Ideally, we'd update state, but in a dialog it's simpler to just proceed or use a StatefulBuilder.
+                // For now, let's assume the user waits a moment.
+
+                try {
+                  final response = await postJson(
+                    'login', // Assuming your flask route is /login
+                    body: {
+                      'login_id': loginId,
+                      'password': password,
+                      'role': 'officer',
+                    },
+                  );
+
+                  // If we reach here, status code was 2xx (success) due to postJson logic
+                  if (context.mounted) {
+                    Navigator.of(context).pop(); // Close dialog
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const BankDashboardPage(),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  // Handle error (401, 400, etc. throws Exception in postJson)
+                  if (context.mounted) {
+                    // Show error message
+                     ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString().replaceAll('Exception:', '').trim())),
+                    );
+                    // We do NOT pop the dialog, so user can re-enter password
+                  }
+                }
               },
             ),
           ],
