@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:loan2/models/beneficiary_loan.dart';
+import 'package:loan2/pages/movement_verification_page.dart';
 import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
 import 'package:loan2/services/sync_service.dart';
@@ -33,7 +34,28 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
   // You can change this logic if you want it for all steps
   bool get _showAmountInput => widget.step.processId == 1;
 
-  Future<void> _pickMedia() async {
+  void _pickMedia() {
+    if (widget.step.dataType == 'movement') {
+      _pickMovement();
+    } else {
+      _pickImageOrVideo();
+    }
+  }
+
+  Future<void> _pickMovement() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const MovementScreen()),
+    );
+
+    if (result is String) {
+      setState(() {
+        _mediaFile = File(result);
+      });
+    }
+  }
+
+  Future<void> _pickImageOrVideo() async {
     try {
       final XFile? pickedFile;
       if (widget.step.dataType == 'video') {
@@ -152,7 +174,7 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("${widget.step.dataType == 'image' ? 'Photo' : 'Video'} Verification"),
+        title: Text("${widget.step.dataType == 'image' ? 'Photo' : widget.step.dataType == 'video' ? 'Video' : 'Movement'} Verification"),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
