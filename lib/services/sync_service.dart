@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io'; // Import for SocketException
 import 'package:http/http.dart' as http;
 import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
@@ -17,7 +16,6 @@ class SyncService {
   static void startListener() {
     print("🔄 Sync Listener Started...");
     _periodicTimer?.cancel();
-    // Check every 5 seconds
     _periodicTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       bool currentlyOnline = await realInternetCheck();
 
@@ -35,19 +33,15 @@ class SyncService {
 
   static Future<bool> realInternetCheck() async {
     try {
-      // Try to lookup a reliable domain (e.g., google.com) or your server IP
-      // Using lookup is faster and more reliable for "internet" check than connecting to your specific server API
-      final result = await InternetAddress.lookup('google.com');
-      if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
-        return true;
-      }
-      return false;
-    } on SocketException catch (_) {
+      final response = await http.head(Uri.parse(kBaseUrl)).timeout(const Duration(seconds: 3));
+      return response.statusCode >= 200 && response.statusCode < 500;
+    } catch (e) {
       return false;
     }
   }
 
   static Future<void> syncImages() async {
+    // Get all items queued for upload
     List<Map<String, dynamic>> data = await DatabaseHelper.instance.getQueuedForUpload();
 
     if (data.isEmpty) return;
@@ -58,19 +52,12 @@ class SyncService {
     for (var row in data) {
       final dbId = row[DatabaseHelper.colId] as int?;
       final loanId = row[DatabaseHelper.colLoanId] as String?;
-      final processId = row[DatabaseHelper.colProcessId] as String?;
-      final userId = row[DatabaseHelper.colUserId] as String?;
+      final processId = row[DatabaseHelper.colProcessId] as String?; // "P1"
+      final userId = row[DatabaseHelper.colUserId] as String?; // CRITICAL: Fetch user_id
       final filePath = row[DatabaseHelper.colFilePath] as String?;
 
       if (dbId == null || loanId == null || processId == null || filePath == null || userId == null) {
-        continue;
-      }
-
-      // Check if file exists locally before trying to upload
-      final file = File(filePath);
-      if (!await file.exists()) {
-        print("⚠️ File not found at $filePath, deleting record.");
-        await DatabaseHelper.instance.deleteImage(dbId, deleteFile: false);
+        print("❌ Skipping invalid row (missing data): $row");
         continue;
       }
 
@@ -81,6 +68,7 @@ class SyncService {
         Uri.parse('${kBaseUrl}upload'),
       );
 
+      // Add the file
       request.files.add(
         await http.MultipartFile.fromPath(
           'file',
@@ -89,32 +77,30 @@ class SyncService {
         ),
       );
 
+      // Add fields exactly as api.py expects them
       request.fields["process_id"] = processId;
       request.fields["loan_id"] = loanId;
-      request.fields["user_id"] = userId;
+      request.fields["user_id"] = userId; // Added this field
 
       try {
         var response = await request.send();
+        final respStr = await response.stream.bytesToString();
 
         if (response.statusCode == 200) {
           print("✅ Sync Success for ID $dbId");
+          // Remove from local DB or mark as synced
           await DatabaseHelper.instance.deleteImage(dbId, deleteFile: true);
           wasSynced = true;
         } else {
-          print("❌ Server Error: ${response.statusCode}");
-          // Don't delete, retry later
+          print("❌ Server Error (${response.statusCode}): $respStr");
         }
-      } on SocketException catch (e) {
-        print("⚠️ Network Unreachable during sync (Will retry later): $e");
-        // Stop the loop for this pass if network is dead
-        break;
       } catch (e) {
-        print("❌ Sync Error: $e");
+        print("❌ Network Error during sync: $e");
       }
     }
 
     if (wasSynced) {
-      _syncController.add(true);
+      _syncController.add(true); // Notify UI to refresh
     }
   }
 

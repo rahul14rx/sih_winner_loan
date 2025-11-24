@@ -97,7 +97,7 @@ class DatabaseHelper {
     final db = await database;
     return await db.update(
       tableImages,
-      {colSubmitted: 1}, // 1 = Queued for Sync
+      {colSubmitted: 1},
       where: '$colId = ?',
       whereArgs: [id],
     );

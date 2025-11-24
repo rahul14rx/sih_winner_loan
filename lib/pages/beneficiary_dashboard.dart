@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:loan2/services/beneficiary_service.dart';
 import 'package:loan2/models/beneficiary_loan.dart';
 import 'package:loan2/pages/loan_detail_screen.dart';
-import 'package:loan2/widgets/beneficiary_drawer.dart'; // Ensure this file exists from previous step
+import 'package:loan2/widgets/beneficiary_drawer.dart';
 import 'package:loan2/services/sync_service.dart';
 import 'package:loan2/services/database_helper.dart';
 
@@ -21,7 +21,7 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
   List<BeneficiaryLoan> _loans = [];
   bool _isLoading = true;
 
-  // Added State Variables for Sync & Connectivity
+  // Added State Variables
   bool isOnline = false;
   int unsyncedCount = 0;
   StreamSubscription? _syncSubscription;
@@ -42,11 +42,9 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     // Listen for connectivity changes
     _onlineStatusSubscription = SyncService.onOnlineStatusChanged.listen((online) {
       if (online != isOnline) {
-        if (mounted) {
-          setState(() {
-            isOnline = online;
-          });
-        }
+        setState(() {
+          isOnline = online;
+        });
       }
     });
   }
@@ -81,7 +79,7 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        // Optionally handle error (e.g., show cached data message)
+        // Optionally show a "showing cached data" snackbar here
       }
     }
   }
@@ -101,7 +99,7 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
         automaticallyImplyLeading: true,
         iconTheme: const IconThemeData(color: Colors.black),
         actions: [
-          // 1. Unsynced Count Indicator (Only shows if there are pending uploads)
+          // 1. Unsynced Count Indicator
           if (unsyncedCount > 0)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
@@ -159,10 +157,7 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-        onRefresh: () async {
-          await _loadData();
-          await _updateUnsyncedCount();
-        },
+        onRefresh: _loadData,
         child: _loans.isEmpty
             ? _buildEmptyState()
             : ListView.separated(
@@ -191,7 +186,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
   }
 
   Widget _buildLoanCard(BeneficiaryLoan loan) {
-    // Logic to calculate progress
     int totalSteps = loan.processes.length;
     int completedSteps = loan.processes.where((p) => p.status == 'verified').length;
     double progress = totalSteps > 0 ? completedSteps / totalSteps : 0.0;
