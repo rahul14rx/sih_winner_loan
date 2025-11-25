@@ -211,14 +211,35 @@ class _MovementScreenState extends State<MovementScreen> {
 
   Future<void> _initializeCamera() async {
     var status = await Permission.camera.request();
+    
+    // CRITICAL FIX: Initialize cameras if they haven't been initialized (e.g. coming from another screen)
+    if (_cameras.isEmpty) {
+      try {
+        _cameras = await availableCameras();
+      } catch (e) {
+        print("Error initializing cameras: $e");
+      }
+    }
+
     if (status.isGranted && _cameras.isNotEmpty) {
-      _controller = CameraController(_cameras[0], ResolutionPreset.medium);
+      // Select the back camera if available, else first one
+      CameraDescription camera = _cameras.first;
+      for (var c in _cameras) {
+        if (c.lensDirection == CameraLensDirection.back) {
+          camera = c;
+          break;
+        }
+      }
+
+      _controller = CameraController(camera, ResolutionPreset.medium);
       await _controller!.initialize();
       if (mounted) {
         setState(() {
           _isCameraReady = true;
         });
       }
+    } else {
+      print("Camera permission denied or no cameras found");
     }
   }
 

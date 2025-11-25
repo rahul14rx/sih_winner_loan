@@ -5,6 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:loan2/services/api.dart'; // For kBaseUrl
+import 'package:loan2/services/database_helper.dart'; // Added
+import 'package:loan2/services/sync_service.dart'; // Added
+import 'package:loan2/services/encryption_service.dart'; // Added Encryption
 
 class CreateBeneficiaryPage extends StatefulWidget {
   const CreateBeneficiaryPage({super.key});
@@ -55,22 +58,40 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
 
     setState(() => _isLoading = true);
 
+    // Gather Data
+    final officerId = "OFF1001"; // Hardcoded for demo
+    final name = _nameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final amount = _amountController.text.trim();
+    final loanId = _loanIdController.text.trim();
+    final scheme = _selectedScheme ?? "";
+    final loanType = _selectedLoanType ?? "";
+    final docPath = _selectedDoc?.path;
+
     try {
+      // Check Offline Status
+      bool isOnline = await SyncService.realInternetCheck();
+
+      if (!isOnline) {
+        await _saveOffline(officerId, name, phone, amount, loanId, scheme, loanType, docPath);
+        return;
+      }
+
       // Create Multipart Request (Required for file upload)
       var request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}bank/beneficiary'));
 
       // Add Fields
-      request.fields['officer_id'] = "OFF1001";
-      request.fields['name'] = _nameController.text.trim();
-      request.fields['phone'] = _phoneController.text.trim();
-      request.fields['amount'] = _amountController.text.trim();
-      request.fields['loan_id'] = _loanIdController.text.trim();
-      request.fields['scheme'] = _selectedScheme ?? "";
-      request.fields['loan_type'] = _selectedLoanType ?? "";
+      request.fields['officer_id'] = officerId;
+      request.fields['name'] = name;
+      request.fields['phone'] = phone;
+      request.fields['amount'] = amount;
+      request.fields['loan_id'] = loanId;
+      request.fields['scheme'] = scheme;
+      request.fields['loan_type'] = loanType;
 
-      // Add File if selected
-      if (_selectedDoc != null) {
-        request.files.add(await http.MultipartFile.fromPath('loan_document', _selectedDoc!.path));
+      // Add File if selected (Online upload does NOT need encryption, server expects standard file)
+      if (docPath != null) {
+        request.files.add(await http.MultipartFile.fromPath('loan_document', docPath));
       }
 
       // Send
@@ -78,22 +99,54 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       final respStr = await response.stream.bytesToString();
 
       if (response.statusCode == 201) {
-        if (mounted) _showSuccessDialog();
+        if (mounted) _showSuccessDialog(isOffline: false);
       } else {
         throw Exception("Server Error: ${response.statusCode} - $respStr");
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
-        );
-      }
+      debugPrint("API Error, saving offline: $e");
+      // If network call fails, save offline
+      await _saveOffline(officerId, name, phone, amount, loanId, scheme, loanType, docPath);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showSuccessDialog() {
+  Future<void> _saveOffline(String officerId, String name, String phone, String amount, String loanId, String scheme, String loanType, String? docPath) async {
+    try {
+      String? encryptedDocPath;
+      
+      // Encrypt file before saving to DB
+      if (docPath != null) {
+        final originalFile = File(docPath);
+        if (await originalFile.exists()) {
+           final encryptedFile = await EncryptionService.encryptFile(originalFile);
+           encryptedDocPath = encryptedFile.path;
+        }
+      }
+
+      await DatabaseHelper.instance.insertPendingBeneficiary(
+        officerId: officerId,
+        name: name,
+        phone: phone,
+        amount: amount,
+        loanId: loanId,
+        scheme: scheme,
+        loanType: loanType,
+        docPath: encryptedDocPath, // Save encrypted path
+      );
+
+      if (mounted) _showSuccessDialog(isOffline: true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error saving offline: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _showSuccessDialog({required bool isOffline}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -104,17 +157,23 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.green[50],
+                color: isOffline ? Colors.orange[50] : Colors.green[50],
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle, color: Colors.green, size: 50),
+              child: Icon(
+                  isOffline ? Icons.cloud_queue : Icons.check_circle,
+                  color: isOffline ? Colors.orange : Colors.green,
+                  size: 50
+              ),
             ),
             const SizedBox(height: 16),
-            Text("Beneficiary Added", style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+            Text(isOffline ? "Saved Offline" : "Beneficiary Added", style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
           ],
         ),
         content: Text(
-          "An SMS has been sent to ${_phoneController.text} with login credentials.",
+          isOffline
+              ? "No internet. Data saved locally (Encrypted) and will sync automatically when online."
+              : "An SMS has been sent to ${_phoneController.text} with login credentials.",
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[600]),
         ),
@@ -127,7 +186,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF138808),
+                backgroundColor: isOffline ? Colors.orange : const Color(0xFF138808),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: const Text("Done"),

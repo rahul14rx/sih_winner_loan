@@ -1,10 +1,30 @@
 // lib/services/api.dart
+import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 
 // Change this to your Flask host
-const String kBaseUrl = 'http://192.168.1.7:5000/';
+const String kBaseUrl = 'http://192.168.1.11:5000/';
+
+final Connectivity _connectivity = Connectivity();
+
+Future<void> _checkConnectivity() async {
+  var connectivityResult = await _connectivity.checkConnectivity();
+  if (connectivityResult.contains(ConnectivityResult.none)) {
+    final completer = Completer<void>();
+    late StreamSubscription<List<ConnectivityResult>> subscription;
+
+    subscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> result) {
+      if (!result.contains(ConnectivityResult.none)) {
+        subscription.cancel();
+        completer.complete();
+      }
+    });
+
+    await completer.future;
+  }
+}
 
 Future<Map<String, dynamic>> postJson(
     String path, {
@@ -12,24 +32,26 @@ Future<Map<String, dynamic>> postJson(
       Map<String, String>? extraHeaders,
       Duration timeout = const Duration(seconds: 15),
     }) async {
+  await _checkConnectivity();
   final uri = Uri.parse('$kBaseUrl$path');
   final headers = <String, String>{
     'Content-Type': 'application/json',
     if (extraHeaders != null) ...extraHeaders,
   };
 
-  final resp = await http.post(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
+  try {
+    final resp = await http.post(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
 
-  if (resp.statusCode >= 200 && resp.statusCode < 300) {
-    if (resp.body.isEmpty) return <String, dynamic>{};
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  } else {
-    String message = 'Server error: ${resp.statusCode}';
-    try {
-      final data = jsonDecode(resp.body);
-      if (data is Map && data['error'] != null) message = data['error'].toString();
-    } catch (_) {}
-    throw Exception(message);
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      if (resp.body.isEmpty) return <String, dynamic>{};
+      return jsonDecode(resp.body) as Map<String, dynamic>;
+    } else {
+      // Server returned an error, return empty map to avoid UI exception
+      return <String, dynamic>{};
+    }
+  } catch(e) {
+    // Connection failed, return empty map to avoid UI exception
+    return <String, dynamic>{};
   }
 }
 
@@ -38,24 +60,25 @@ Future<Map<String, dynamic>> getJson(
       Map<String, String>? extraHeaders,
       Duration timeout = const Duration(seconds: 15),
     }) async {
-  debugPrint("🚀 MAKING GET REQUEST to: $path"); // DEBUGGING LINE
+  await _checkConnectivity();
   final uri = Uri.parse('$kBaseUrl$path');
   final headers = <String, String>{
     'Content-Type': 'application/json',
     if (extraHeaders != null) ...extraHeaders,
   };
 
-  final resp = await http.get(uri, headers: headers).timeout(timeout);
+  try {
+    final resp = await http.get(uri, headers: headers).timeout(timeout);
 
-  if (resp.statusCode >= 200 && resp.statusCode < 300) {
-    if (resp.body.isEmpty) return <String, dynamic>{};
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  } else {
-    String message = 'Server error: ${resp.statusCode}';
-    try {
-      final data = jsonDecode(resp.body);
-      if (data is Map && data['error'] != null) message = data['error'].toString();
-    } catch (_) {}
-    throw Exception(message);
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      if (resp.body.isEmpty) return <String, dynamic>{};
+      return jsonDecode(resp.body) as Map<String, dynamic>;
+    } else {
+      // Server returned an error, return empty map to avoid UI exception
+      return <String, dynamic>{};
+    }
+  } catch(e) {
+    // Connection failed, return empty map to avoid UI exception
+    return <String, dynamic>{};
   }
 }

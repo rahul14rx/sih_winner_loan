@@ -6,10 +6,12 @@ import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
   static const _dbName = 'loan_app.db';
-  static const _dbVersion = 4;
+  static const _dbVersion = 5; // Incremented to 5 for new table
+  
   static const tableImages = 'images';
+  static const tableBeneficiaries = 'pending_beneficiaries'; // New Table
 
-  // columns & statuses
+  // columns for images
   static const colId = 'id';
   static const colUserId = 'user_id';
   static const colProcessId = 'process_id';
@@ -18,6 +20,15 @@ class DatabaseHelper {
   static const colFilePath = 'file_path';
   static const colSubmitted = 'submitted'; // 0 = captured, 1 = queued for upload
   static const colCreatedAt = 'created_at';
+
+  // columns for beneficiaries (Reuse some names where possible, define others)
+  static const colOfficerId = 'officer_id';
+  static const colName = 'name';
+  static const colPhone = 'phone';
+  static const colAmount = 'amount';
+  static const colScheme = 'scheme';
+  static const colLoanType = 'loan_type';
+  static const colDocPath = 'doc_path';
 
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
@@ -49,6 +60,21 @@ class DatabaseHelper {
         $colCreatedAt INTEGER
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE $tableBeneficiaries (
+        $colId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $colOfficerId TEXT,
+        $colName TEXT,
+        $colPhone TEXT,
+        $colAmount TEXT,
+        $colLoanId TEXT,
+        $colScheme TEXT,
+        $colLoanType TEXT,
+        $colDocPath TEXT,
+        $colCreatedAt INTEGER
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -61,7 +87,26 @@ class DatabaseHelper {
     if (oldVersion < 4) {
       await db.execute('ALTER TABLE $tableImages ADD COLUMN $colProcessIntId INTEGER;');
     }
+    if (oldVersion < 5) {
+      // Create the new table for version 5
+      await db.execute('''
+        CREATE TABLE $tableBeneficiaries (
+          $colId INTEGER PRIMARY KEY AUTOINCREMENT,
+          $colOfficerId TEXT,
+          $colName TEXT,
+          $colPhone TEXT,
+          $colAmount TEXT,
+          $colLoanId TEXT,
+          $colScheme TEXT,
+          $colLoanType TEXT,
+          $colDocPath TEXT,
+          $colCreatedAt INTEGER
+        )
+      ''');
+    }
   }
+
+  // --- Image Methods ---
 
   Future<int> insertImagePath({
     required String userId,
@@ -115,7 +160,13 @@ class DatabaseHelper {
   Future<int> getQueuedForUploadCount() async {
     final db = await instance.database;
     final result = await db.rawQuery('SELECT COUNT(*) FROM $tableImages WHERE $colSubmitted = 1');
-    return Sqflite.firstIntValue(result) ?? 0;
+    final imgCount = Sqflite.firstIntValue(result) ?? 0;
+
+    // Also count pending beneficiaries
+    final resultBen = await db.rawQuery('SELECT COUNT(*) FROM $tableBeneficiaries');
+    final benCount = Sqflite.firstIntValue(resultBen) ?? 0;
+
+    return imgCount + benCount;
   }
 
   Future<int> deleteImage(int id, {bool deleteFile = true}) async {
@@ -137,5 +188,42 @@ class DatabaseHelper {
       }
     }
     return await db.delete(tableImages, where: '$colId = ?', whereArgs: [id]);
+  }
+
+  // --- Beneficiary Methods (Offline Support) ---
+
+  Future<int> insertPendingBeneficiary({
+    required String officerId,
+    required String name,
+    required String phone,
+    required String amount,
+    required String loanId,
+    required String scheme,
+    required String loanType,
+    String? docPath,
+  }) async {
+    final db = await database;
+    final row = {
+      colOfficerId: officerId,
+      colName: name,
+      colPhone: phone,
+      colAmount: amount,
+      colLoanId: loanId,
+      colScheme: scheme,
+      colLoanType: loanType,
+      colDocPath: docPath,
+      colCreatedAt: DateTime.now().millisecondsSinceEpoch,
+    };
+    return await db.insert(tableBeneficiaries, row);
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingBeneficiaries() async {
+    final db = await database;
+    return await db.query(tableBeneficiaries);
+  }
+
+  Future<int> deletePendingBeneficiary(int id) async {
+    final db = await database;
+    return await db.delete(tableBeneficiaries, where: '$colId = ?', whereArgs: [id]);
   }
 }
