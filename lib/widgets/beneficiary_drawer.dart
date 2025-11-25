@@ -15,30 +15,42 @@ class BeneficiaryDrawer extends StatelessWidget {
     return Drawer(
       child: Column(
         children: [
-          // 1. Premium Header
+          // 1. Premium Header with Gradient
           UserAccountsDrawerHeader(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFFFF9933), Color(0xFFFF6600)], // Saffron Gradient
+                colors: [Color(0xFFFF9933), Color(0xFFFFFFFE)], // Saffron to Green
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
             ),
             accountName: Text(
               userName,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+                color: Colors.white,
+                letterSpacing: 0.5,
+              ),
             ),
-            accountEmail: Text(
-              "ID: $userId",
-              style: const TextStyle(color: Colors.white70),
+            accountEmail: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                "ID: $userId",
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+              ),
             ),
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
               child: Text(
                 userName.isNotEmpty ? userName[0].toUpperCase() : "B",
                 style: const TextStyle(
-                  fontSize: 24,
-                  color: Color(0xFFFF9933),
+                  fontSize: 28,
+                  color: Color(0xFFFF9933), // Saffron text
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -48,7 +60,7 @@ class BeneficiaryDrawer extends StatelessWidget {
           // 2. Menu Items
           Expanded(
             child: ListView(
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
                 _buildDrawerItem(
                   context,
@@ -78,7 +90,7 @@ class BeneficiaryDrawer extends StatelessWidget {
                     // TODO: Navigate to History
                   },
                 ),
-                const Divider(),
+                const Divider(indent: 16, endIndent: 16),
                 _buildDrawerItem(
                   context,
                   icon: Icons.notifications_outlined,
@@ -100,14 +112,23 @@ class BeneficiaryDrawer extends StatelessWidget {
           ),
 
           // 3. Bottom Logout
-          const Divider(),
+          const Divider(height: 1),
           ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.logout, color: Colors.red, size: 20),
+            ),
             title: const Text(
               "Logout",
               style: TextStyle(
                 color: Colors.red,
                 fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
             ),
             onTap: () {
@@ -129,19 +150,27 @@ class BeneficiaryDrawer extends StatelessWidget {
         bool isSelected = false,
       }) {
     final color = isSelected ? const Color(0xFFFF9933) : Colors.grey[700];
+    final bgColor = isSelected ? const Color(0xFFFF9933).withOpacity(0.1) : Colors.transparent;
 
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: isSelected ? const Color(0xFFFF9933) : Colors.black87,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-        ),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
       ),
-      selected: isSelected,
-      selectedTileColor: const Color(0xFFFF9933).withOpacity(0.1),
-      onTap: onTap,
+      child: ListTile(
+        leading: Icon(icon, color: color, size: 26),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? const Color(0xFFFF9933) : Colors.black87,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            fontSize: 15,
+          ),
+        ),
+        onTap: onTap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
   }
 }

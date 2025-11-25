@@ -42,6 +42,10 @@ dependencies:
   intl: ^0.18.1
   connectivity_plus: ^4.0.0
   http_parser: ^4.0.1
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.9
+  lucide_icons: ^0.257.0
+  url_launcher: ^6.3.2
 
 
 

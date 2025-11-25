@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/pages/login_page.dart';
 import 'package:loan2/pages/loan_process_page.dart';
-import 'package:loan2/services/sync_service.dart'; // <-- Added this import
+import 'package:loan2/services/sync_service.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized(); // <-- Added this
-  SyncService.startListener(); // <-- Added this to start auto-sync
+  WidgetsFlutterBinding.ensureInitialized();
+  SyncService.startListener();
   runApp(const NyaySahayakApp());
 }
 
@@ -17,49 +18,79 @@ class NyaySahayakApp extends StatelessWidget {
     return MaterialApp(
       title: 'Nyay Sahayak',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primaryColor: const Color(0xFFFF9933), // Saffron
-        colorScheme: ColorScheme.fromSwatch().copyWith(
-          primary: const Color(0xFFFF9933), // Saffron
-          secondary: const Color(0xFF138808), // Green
-        ),
-        scaffoldBackgroundColor: Colors.white,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFFF9933),
-          elevation: 0,
-          titleTextStyle: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-          iconTheme: IconThemeData(color: Colors.white),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF138808), // Green
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-          ),
-        ),
-      ),
-      // Start with the Login Page
+      theme: _buildTheme(),
       home: const LoginPage(),
-
-      // Define your Named Routes here
       routes: {
-        // The route name we used in beneficiary_login_page.dart
         '/loan-process': (context) {
-          // Extract the arguments passed from Navigator.pushNamed
           final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
           final userId = args?['userId'] as String? ?? '';
-
-          // Return the Loan Process Page with the user ID
           return LoanProcessPage(userId: userId);
         },
       },
+    );
+  }
+
+  ThemeData _buildTheme() {
+    final base = ThemeData.light();
+
+    return base.copyWith(
+      primaryColor: const Color(0xFFD26C00), // Saffron
+      scaffoldBackgroundColor: const Color(0xFFFAFAFA),
+
+      // 1. Typography
+      textTheme: GoogleFonts.poppinsTextTheme(base.textTheme).copyWith(
+        displayLarge: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: const Color(0xFF1A1A1A)),
+        bodyLarge: GoogleFonts.inter(fontSize: 16, color: const Color(0xFF4A4A4A)),
+        bodyMedium: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF6A6A6A)),
+      ),
+
+      // 2. Card Theme - FIX: Removed 'CardTheme' constructor if it causes conflict.
+      // We use the standard properties directly on the theme data where possible or just standard CardTheme.
+      // If 'CardTheme' gives you an error, replace it with 'CardThemeData' (if on very new Flutter).
+      // Assuming standard stable Flutter:
+      cardTheme: CardThemeData(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.shade200, width: 1),
+        ),
+        color: Colors.white,
+        margin: EdgeInsets.zero,
+      ),
+
+      // 3. Input Fields
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFFF9933), width: 1.5),
+        ),
+        labelStyle: const TextStyle(color: Colors.grey),
+        prefixIconColor: const Color(0xFF435E91),
+      ),
+
+      // 4. Buttons
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF138808),
+          foregroundColor: Colors.white,
+          elevation: 2,
+          // Fixed 'withOpacity' warning by using standard RGBO
+          shadowColor: const Color.fromRGBO(19, 136, 8, 0.4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
     );
   }
 }
