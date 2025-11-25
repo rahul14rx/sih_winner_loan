@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/pages/login_page.dart';
 import 'package:loan2/pages/loan_process_page.dart';
 import 'package:loan2/services/sync_service.dart';
@@ -37,17 +36,14 @@ class NyaySahayakApp extends StatelessWidget {
       primaryColor: const Color(0xFFD26C00), // Saffron
       scaffoldBackgroundColor: const Color(0xFFFAFAFA),
 
-      // 1. Typography
-      textTheme: GoogleFonts.poppinsTextTheme(base.textTheme).copyWith(
-        displayLarge: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: const Color(0xFF1A1A1A)),
-        bodyLarge: GoogleFonts.inter(fontSize: 16, color: const Color(0xFF4A4A4A)),
-        bodyMedium: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF6A6A6A)),
+      // 1. Typography (FIX: Removed GoogleFonts to prevent offline crash)
+      textTheme: base.textTheme.copyWith(
+        displayLarge: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A)),
+        bodyLarge: const TextStyle(fontSize: 16, color: Color(0xFF4A4A4A)),
+        bodyMedium: const TextStyle(fontSize: 14, color: Color(0xFF6A6A6A)),
       ),
 
-      // 2. Card Theme - FIX: Removed 'CardTheme' constructor if it causes conflict.
-      // We use the standard properties directly on the theme data where possible or just standard CardTheme.
-      // If 'CardTheme' gives you an error, replace it with 'CardThemeData' (if on very new Flutter).
-      // Assuming standard stable Flutter:
+      // 2. Card Theme (FIX: Corrected class name)
       cardTheme: CardThemeData(
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -84,11 +80,10 @@ class NyaySahayakApp extends StatelessWidget {
           backgroundColor: const Color(0xFF138808),
           foregroundColor: Colors.white,
           elevation: 2,
-          // Fixed 'withOpacity' warning by using standard RGBO
           shadowColor: const Color.fromRGBO(19, 136, 8, 0.4),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );

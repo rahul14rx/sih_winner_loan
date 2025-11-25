@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SyncService {
   static final _syncController = StreamController<bool>.broadcast();
@@ -10,25 +11,46 @@ class SyncService {
   static Stream<bool> get onSync => _syncController.stream;
   static Stream<bool> get onOnlineStatusChanged => _onlineStatusController.stream;
 
-  static Timer? _periodicTimer;
+  static StreamSubscription<ConnectivityResult>? _connectivitySubscription;
   static bool _isOnline = false;
 
   static void startListener() {
     print("🔄 Sync Listener Started...");
-    _periodicTimer?.cancel();
-    _periodicTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      bool currentlyOnline = await realInternetCheck();
+    _connectivitySubscription?.cancel(); // Cancel any previous listener
 
-      if (currentlyOnline != _isOnline) {
-        _isOnline = currentlyOnline;
+    // Listen for connectivity changes
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((ConnectivityResult result) async {
+      bool isDeviceConnected = result != ConnectivityResult.none;
+
+      // Perform a real internet check to confirm server reachability.
+      bool canReachServer = isDeviceConnected ? await realInternetCheck() : false;
+
+      // Check if the online status has actually changed to avoid redundant calls.
+      if (canReachServer != _isOnline) {
+        _isOnline = canReachServer;
         _onlineStatusController.add(_isOnline);
-        print("🌐 Connection Status: ${_isOnline ? "Online" : "Offline"}");
-      }
+        print("🌐 Connection Status Changed: ${_isOnline ? "Online" : "Offline"}");
 
-      if (_isOnline) {
-        await syncImages();
+        // If we just came online, trigger the sync.
+        if (_isOnline) {
+          print("🚀 Now online, attempting to sync...");
+          await syncImages();
+        }
       }
     });
+
+    // Also perform an initial check when the app starts.
+    _initialCheck();
+  }
+
+  // New method for the initial check
+  static Future<void> _initialCheck() async {
+    _isOnline = await realInternetCheck();
+    _onlineStatusController.add(_isOnline);
+    print("🌟 Initial Connection Status: ${_isOnline ? "Online" : "Offline"}");
+    if (_isOnline) {
+      await syncImages();
+    }
   }
 
   static Future<bool> realInternetCheck() async {
@@ -107,6 +129,6 @@ class SyncService {
   static void dispose() {
     _syncController.close();
     _onlineStatusController.close();
-    _periodicTimer?.cancel();
+    _connectivitySubscription?.cancel();
   }
 }

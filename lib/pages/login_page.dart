@@ -283,11 +283,8 @@ class _LoginPageState extends State<LoginPage> {
                       child: Container(
                         width: 150,
                         height: 120,
-                        child: Image.network(
-                          'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/1800px-Emblem_of_India.svg.png',
-                          height: 100,
-                          errorBuilder: (_,__,___) => const Icon(Icons.account_balance, size: 50, color: Colors.grey),
-                        ),
+                        // FIX: Replaced Image.network with a placeholder Icon to prevent offline crash
+                        child: const Icon(Icons.account_balance, size: 80, color: Color(0xFF000080)),
                       ),
                     ),
                     const SizedBox(height: 20),

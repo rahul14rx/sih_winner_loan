@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:loan2/models/beneficiary_loan.dart';
 import 'package:loan2/pages/verification_step_page.dart';
@@ -16,36 +17,29 @@ class LoanDetailScreen extends StatefulWidget {
 class _LoanDetailScreenState extends State<LoanDetailScreen> {
   late BeneficiaryLoan _currentLoan;
   final BeneficiaryService _service = BeneficiaryService();
-  bool _isRefreshing = false;
+  bool _isRefreshing = true;
 
-  // Tracks which steps are saved locally (offline) but not yet synced
   Map<String, bool> _localUploads = {};
-
-  // Mock utilization amount for demo (In real app, fetch from API)
+  // This is mock data, in a real app, you would fetch this.
   double _amountUsed = 27000;
 
   @override
   void initState() {
     super.initState();
     _currentLoan = widget.loan;
-    _checkLocalUploads();
+    _refreshLoanData();
   }
 
-  // Check local DB to see if we have pending uploads for this loan
   Future<void> _checkLocalUploads() async {
     final queued = await DatabaseHelper.instance.getQueuedForUpload();
     final Map<String, bool> statusMap = {};
-
     for (var row in queued) {
       final pid = row[DatabaseHelper.colProcessId] as String?;
       final lid = row[DatabaseHelper.colLoanId] as String?;
-
-      // If the local DB has an entry for this Loan ID & Process ID, mark it as locally done
       if (pid != null && lid == _currentLoan.loanId) {
         statusMap[pid] = true;
       }
     }
-
     if (mounted) {
       setState(() {
         _localUploads = statusMap;
@@ -54,19 +48,12 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
   }
 
   Future<void> _refreshLoanData() async {
-    setState(() => _isRefreshing = true);
-
-    // 1. Re-check local DB status (Critical for offline updates)
+    if (!_isRefreshing) setState(() => _isRefreshing = true);
+    // Always check for local changes first
     await _checkLocalUploads();
-
-    // 2. Fetch latest server status
     try {
-      List<BeneficiaryLoan> allLoans = await _service.fetchUserLoans(_currentLoan.userId);
-      final updatedLoan = allLoans.firstWhere(
-              (l) => l.loanId == _currentLoan.loanId,
-          orElse: () => _currentLoan
-      );
-
+      // Then, fetch the latest data from the server
+      final updatedLoan = await _service.fetchLoanDetails(_currentLoan.loanId);
       if (mounted) {
         setState(() {
           _currentLoan = updatedLoan;
@@ -74,14 +61,32 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
         });
       }
     } catch (e) {
-      // If offline, we still stop the spinner, relying on _localUploads to show progress
+      // If fetching fails (e.g., offline), still stop the refresh indicator
       if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
+
+  // Navigation logic is separated for clarity
+  Future<void> _navigateToVerification(ProcessStep step) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VerificationStepPage(
+          loanId: _currentLoan.loanId,
+          step: step,
+          userId: _currentLoan.userId,
+        ),
+      ),
+    );
+    // When we return from the verification page, refresh the data
+    if (result == true) {
+      _refreshLoanData();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Calculate progress for utilization bar (Mock logic for demo visualization)
+    // This should probably come from your API in a real app
     double sanctionedAmount = 60000;
     double utilizationPercent = (_amountUsed / sanctionedAmount).clamp(0.0, 1.0);
 
@@ -96,189 +101,148 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
       ),
       body: _isRefreshing
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Utilization Card
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("Loan Utilization", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      Text("${(utilizationPercent * 100).toInt()}% · Provisional", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Stack(
-                    children: [
-                      Container(
-                        height: 10,
-                        width: double.infinity,
-                        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(5)),
-                      ),
-                      FractionallySizedBox(
-                        widthFactor: utilizationPercent,
-                        child: Container(
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF435E91),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("₹${_amountUsed.toInt()} of ₹${sanctionedAmount.toInt()} used", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
-                      Text("${(utilizationPercent * 100).toInt()}% · Provisional", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                    ],
-                  ),
-                ],
+          : RefreshIndicator(
+              onRefresh: _refreshLoanData,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildUtilizationCard(utilizationPercent, sanctionedAmount),
+                    const SizedBox(height: 20),
+                    _buildLoanDetailsCard(sanctionedAmount),
+                    const SizedBox(height: 30),
+                    _buildStartVerificationButton(),
+                    const SizedBox(height: 30),
+                    const Text("Steps Checklist", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
+                    const SizedBox(height: 10),
+                    ..._currentLoan.processes.map((step) => _buildStepTile(step)),
+                  ],
+                ),
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            // 2. Loan Details Card
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-              ),
-              child: Column(
-                children: [
-                  _buildDetailRow("Asset", "Laptop Loan"),
-                  _buildDetailRow("Beneficiary", "Rahul Kumar"),
-                  _buildDetailRow("Loan ID", _currentLoan.loanId),
-                  _buildDetailRow("Scheme", "NBCFDC"),
-                  _buildDetailRow("Category", "Education Loan"),
-                  _buildDetailRow("Bank", "State Bank of India"),
-                  _buildDetailRow("Sanctioned Amount", "₹${sanctionedAmount.toInt()}"),
-                  _buildDetailRow("Status", "Pending"),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // 3. Start Verification Button
-            // LOGIC FIX: Correctly find the NEXT step by checking local uploads too
-            Builder(
-                builder: (context) {
-                  ProcessStep? nextStep;
-                  bool allDone = true;
-
-                  for (var step in _currentLoan.processes) {
-                    bool isLocallyDone = _localUploads[step.id] == true;
-                    bool isServerDone = step.status == 'verified' || step.status == 'pending_review';
-
-                    // If step is NOT done (neither locally nor on server), it is the next step
-                    if (!isLocallyDone && !isServerDone) {
-                      nextStep = step;
-                      allDone = false;
-                      break;
-                    }
-                  }
-
-                  if (allDone) {
-                    return SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-                        onPressed: null, // Disabled
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          disabledBackgroundColor: Colors.green.withOpacity(0.6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text("All Steps Completed", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                      ),
-                    );
-                  }
-
-                  return SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        if (nextStep != null) {
-                          _startVerification(nextStep);
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF435E91),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 5,
-                      ),
-                      child: Text("Start ${nextStep!.whatToDo}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                    ),
-                  );
-                }
-            ),
-
-            const SizedBox(height: 30),
-
-            // 4. Steps List
-            const Text("Steps Checklist", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
-            const SizedBox(height: 10),
-            ..._currentLoan.processes.map((step) => _buildStepTile(step)),
-          ],
-        ),
-      ),
     );
   }
 
-  void _startVerification(dynamic step) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => VerificationStepPage(
-          loanId: _currentLoan.loanId,
-          step: step,
-          userId: _currentLoan.userId,
-        ),
-      ),
-    ).then((result) {
-      // If 'result' is true, it means an upload (online or offline) happened.
-      // We MUST refresh to update the local state and move to the next step.
-      if (result == true) {
-        _refreshLoanData();
-      }
-    });
-  }
+  // --- WIDGET BUILDER METHODS ---
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildUtilizationCard(double utilizationPercent, double sanctionedAmount) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 120, child: Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 14))),
-          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87), textAlign: TextAlign.right)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Loan Utilization", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text("${(utilizationPercent * 100).toInt()}% · Provisional", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Stack(
+            children: [
+              Container(
+                height: 10,
+                width: double.infinity,
+                decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(5)),
+              ),
+              FractionallySizedBox(
+                widthFactor: utilizationPercent,
+                child: Container(
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF435E91),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("₹${_amountUsed.toInt()} of ₹${sanctionedAmount.toInt()} used", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildStepTile(dynamic step) {
-    // Check logic: Is it done on server OR done locally?
+  Widget _buildLoanDetailsCard(double sanctionedAmount) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: Column(
+        children: [
+          _buildDetailRow("Asset", "Laptop Loan"),
+          _buildDetailRow("Beneficiary", "Rahul Kumar"),
+          _buildDetailRow("Loan ID", _currentLoan.loanId),
+          _buildDetailRow("Scheme", "NBCFDC"),
+          _buildDetailRow("Category", "Education Loan"),
+          _buildDetailRow("Bank", "State Bank of India"),
+          _buildDetailRow("Sanctioned Amount", "₹${sanctionedAmount.toInt()}"),
+          _buildDetailRow("Status", "Pending"),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStartVerificationButton() {
+    return Builder(builder: (context) {
+      ProcessStep? nextStep = _findNextStep();
+
+      if (nextStep == null) {
+        return SizedBox(
+          width: double.infinity,
+          height: 55,
+          child: ElevatedButton(
+            onPressed: null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              disabledBackgroundColor: Colors.green.withOpacity(0.6),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text("All Steps Completed", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+          ),
+        );
+      }
+
+      return SizedBox(
+        width: double.infinity,
+        height: 55,
+        child: ElevatedButton(
+          // MODIFIED: This onPressed now refreshes data before navigating
+          onPressed: () async {
+            await _refreshLoanData(); // API Call is made here
+            final refreshedNextStep = _findNextStep(); // Check again with new data
+            if (refreshedNextStep != null && mounted) {
+              _navigateToVerification(refreshedNextStep);
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF435E91),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 5,
+          ),
+          child: Text("Start ${nextStep.whatToDo}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+        ),
+      );
+    });
+  }
+
+  Widget _buildStepTile(ProcessStep step) {
     bool isLocallyDone = _localUploads[step.id] == true;
     bool isServerDone = step.status == 'verified' || step.status == 'pending_review';
     bool isDone = isServerDone || isLocallyDone;
@@ -318,15 +282,22 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(step.whatToDo, style: TextStyle(color: isDone ? Colors.black87 : Colors.grey[600], fontWeight: isDone ? FontWeight.w600 : FontWeight.normal)),
-                if (isDone)
-                  Text(statusText, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold)),
+                if (isDone) Text(statusText, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
-          // Hide "Start" button if step is done (either locally or on server)
           if (!isDone)
             ElevatedButton(
-              onPressed: () => _startVerification(step),
+              // MODIFIED: This onPressed now refreshes data before navigating
+              onPressed: () async {
+                await _refreshLoanData(); // API Call is made here
+                // Find the specific step again from the refreshed list
+                final refreshedStep = _currentLoan.processes.firstWhere((s) => s.id == step.id);
+                // Only navigate if the step is still not done after refresh
+                if (refreshedStep.status != 'verified' && refreshedStep.status != 'pending_review' && mounted) {
+                  _navigateToVerification(refreshedStep);
+                }
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF138808),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -338,5 +309,31 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 120, child: Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 14))),
+          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87), textAlign: TextAlign.right)),
+        ],
+      ),
+    );
+  }
+  
+  // Helper to find the next step to be done
+  ProcessStep? _findNextStep() {
+    for (var step in _currentLoan.processes) {
+      bool isLocallyDone = _localUploads[step.id] == true;
+      bool isServerDone = step.status == 'verified' || step.status == 'pending_review';
+      if (!isLocallyDone && !isServerDone) {
+        return step;
+      }
+    }
+    return null;
   }
 }

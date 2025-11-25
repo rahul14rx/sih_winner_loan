@@ -32,19 +32,26 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     super.initState();
     _initPage();
 
-    // Listen for background syncs to refresh UI
+    // Listen for background syncs to refresh UI (e.g., after an upload completes)
     _syncSubscription = SyncService.onSync.listen((_) {
-      debugPrint("🔄 UI Refresh triggered by background sync");
+      debugPrint("🔄 UI Refresh triggered by post-sync event");
       _loadData();
       _updateUnsyncedCount();
     });
 
-    // Listen for connectivity changes
+    // Listen for connectivity changes to refresh UI
     _onlineStatusSubscription = SyncService.onOnlineStatusChanged.listen((online) {
       if (online != isOnline) {
         setState(() {
           isOnline = online;
         });
+
+        // If the app just came online, refresh the data.
+        if (online) {
+          debugPrint("🚀 UI Refresh triggered by coming online");
+          _loadData();
+          _updateUnsyncedCount();
+        }
       }
     });
   }
