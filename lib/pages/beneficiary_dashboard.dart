@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart'; // Added for phone call
 import 'package:loan2/services/beneficiary_service.dart';
 import 'package:loan2/models/beneficiary_loan.dart';
 import 'package:loan2/pages/loan_detail_screen.dart';
@@ -91,6 +92,27 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     }
   }
 
+  // Function to make a phone call
+  Future<void> _makePhoneCall() async {
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: '9150462438',
+    );
+    try {
+      if (await canLaunchUrl(launchUri)) {
+        await launchUrl(launchUri);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Could not launch dialer")),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Error launching call: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -173,6 +195,14 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
           separatorBuilder: (_, __) => const SizedBox(height: 16),
           itemBuilder: (context, index) => _buildLoanCard(_loans[index]),
         ),
+      ),
+      
+      // Add Call Button (Floating Action Button)
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _makePhoneCall,
+        backgroundColor: const Color(0xFF138808),
+        icon: const Icon(Icons.call, color: Colors.white),
+        label: const Text("Call Support", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }

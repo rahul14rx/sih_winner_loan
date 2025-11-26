@@ -6,10 +6,11 @@ import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
   static const _dbName = 'loan_app.db';
-  static const _dbVersion = 5; // Incremented to 5 for new table
+  static const _dbVersion = 6; // Incremented to 6 for officer actions
   
   static const tableImages = 'images';
-  static const tableBeneficiaries = 'pending_beneficiaries'; // New Table
+  static const tableBeneficiaries = 'pending_beneficiaries';
+  static const tableOfficerActions = 'officer_actions'; // New Table
 
   // columns for images
   static const colId = 'id';
@@ -21,7 +22,7 @@ class DatabaseHelper {
   static const colSubmitted = 'submitted'; // 0 = captured, 1 = queued for upload
   static const colCreatedAt = 'created_at';
 
-  // columns for beneficiaries (Reuse some names where possible, define others)
+  // columns for beneficiaries
   static const colOfficerId = 'officer_id';
   static const colName = 'name';
   static const colPhone = 'phone';
@@ -29,6 +30,10 @@ class DatabaseHelper {
   static const colScheme = 'scheme';
   static const colLoanType = 'loan_type';
   static const colDocPath = 'doc_path';
+
+  // columns for officer actions
+  static const colActionType = 'action_type'; // 'verified' or 'rejected'
+  static const colStatus = 'status'; // Same as action type essentially
 
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
@@ -75,6 +80,16 @@ class DatabaseHelper {
         $colCreatedAt INTEGER
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE $tableOfficerActions (
+        $colId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $colLoanId TEXT,
+        $colProcessId TEXT,
+        $colActionType TEXT,
+        $colCreatedAt INTEGER
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -88,7 +103,6 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE $tableImages ADD COLUMN $colProcessIntId INTEGER;');
     }
     if (oldVersion < 5) {
-      // Create the new table for version 5
       await db.execute('''
         CREATE TABLE $tableBeneficiaries (
           $colId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +114,17 @@ class DatabaseHelper {
           $colScheme TEXT,
           $colLoanType TEXT,
           $colDocPath TEXT,
+          $colCreatedAt INTEGER
+        )
+      ''');
+    }
+    if (oldVersion < 6) {
+      await db.execute('''
+        CREATE TABLE $tableOfficerActions (
+          $colId INTEGER PRIMARY KEY AUTOINCREMENT,
+          $colLoanId TEXT,
+          $colProcessId TEXT,
+          $colActionType TEXT,
           $colCreatedAt INTEGER
         )
       ''');
@@ -162,11 +187,13 @@ class DatabaseHelper {
     final result = await db.rawQuery('SELECT COUNT(*) FROM $tableImages WHERE $colSubmitted = 1');
     final imgCount = Sqflite.firstIntValue(result) ?? 0;
 
-    // Also count pending beneficiaries
     final resultBen = await db.rawQuery('SELECT COUNT(*) FROM $tableBeneficiaries');
     final benCount = Sqflite.firstIntValue(resultBen) ?? 0;
+    
+    final resultAct = await db.rawQuery('SELECT COUNT(*) FROM $tableOfficerActions');
+    final actCount = Sqflite.firstIntValue(resultAct) ?? 0;
 
-    return imgCount + benCount;
+    return imgCount + benCount + actCount;
   }
 
   Future<int> deleteImage(int id, {bool deleteFile = true}) async {
@@ -225,5 +252,32 @@ class DatabaseHelper {
   Future<int> deletePendingBeneficiary(int id) async {
     final db = await database;
     return await db.delete(tableBeneficiaries, where: '$colId = ?', whereArgs: [id]);
+  }
+
+  // --- Officer Action Methods (New) ---
+
+  Future<int> insertOfficerAction({
+    required String loanId,
+    required String processId,
+    required String actionType,
+  }) async {
+    final db = await database;
+    final row = {
+      colLoanId: loanId,
+      colProcessId: processId,
+      colActionType: actionType,
+      colCreatedAt: DateTime.now().millisecondsSinceEpoch,
+    };
+    return await db.insert(tableOfficerActions, row);
+  }
+
+  Future<List<Map<String, dynamic>>> getOfficerActions() async {
+    final db = await database;
+    return await db.query(tableOfficerActions);
+  }
+
+  Future<int> deleteOfficerAction(int id) async {
+    final db = await database;
+    return await db.delete(tableOfficerActions, where: '$colId = ?', whereArgs: [id]);
   }
 }

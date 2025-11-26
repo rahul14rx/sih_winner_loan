@@ -1,7 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:loan2/services/api.dart';
+import 'package:loan2/services/database_helper.dart';
+import 'package:loan2/services/sync_service.dart';
 
 class LoanDetailPage extends StatefulWidget {
   final String loanId;
@@ -15,11 +20,58 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
   Map<String, dynamic>? _details;
   bool _loading = true;
   String _error = '';
+  bool _isOnline = true;
 
   @override
   void initState() {
     super.initState();
+    _checkOnline();
     _fetchDetails();
+  }
+
+  Future<void> _checkOnline() async {
+    _isOnline = await SyncService.realInternetCheck();
+    if (mounted) setState(() {});
+  }
+
+  // --- Caching Logic ---
+  Future<File> _getCacheFile() async {
+    final docs = await getApplicationDocumentsDirectory();
+    return File(p.join(docs.path, 'loan_detail_cache_${widget.loanId}.json'));
+  }
+
+  Future<void> _writeToCache(Map<String, dynamic> data) async {
+    try {
+      final file = await _getCacheFile();
+      await file.writeAsString(jsonEncode(data));
+    } catch (e) {
+      debugPrint("Failed to write cache: $e");
+    }
+  }
+
+  Future<void> _loadFromCache() async {
+    try {
+      final file = await _getCacheFile();
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final data = jsonDecode(content) as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _details = data;
+            _loading = false;
+            _error = ''; // Clear error if cache loaded
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("You are offline. Viewing cached data."), backgroundColor: Colors.orange),
+          );
+        }
+      } else {
+        if (mounted) setState(() => _error = "No offline data available.");
+      }
+    } catch (e) {
+      debugPrint("Failed to load cache: $e");
+      if (mounted) setState(() => _error = "Failed to load offline data.");
+    }
   }
 
   Future<void> _fetchDetails() async {
@@ -30,26 +82,61 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     });
 
     try {
+      final isOnline = await SyncService.realInternetCheck();
+      if (!isOnline) {
+        setState(() => _loading = false); // Stop spinner
+        await _loadFromCache();
+        return;
+      }
+
       final data = await getJson('loan_details?loan_id=${widget.loanId}');
+      
       if (mounted) {
+        final details = data['loan_details'];
         setState(() {
-          // CORRECTED: Ensure we are using the 'loan_details' key from the Python response
-          _details = data['loan_details'];
+          _details = details;
           _loading = false;
         });
+        // Cache the successful response
+        await _writeToCache(details);
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = "Failed to load details: $e";
-        });
-      }
       debugPrint("Error fetching details: $e");
+      // Try loading cache on error
+      if (mounted) {
+        setState(() => _loading = false);
+        await _loadFromCache();
+      }
     }
   }
 
   Future<void> _verifyProcess(String processId, String status) async {
+    bool isOnline = await SyncService.realInternetCheck();
+
+    if (!isOnline) {
+      // --- Offline Mode: Queue Action ---
+      try {
+        await DatabaseHelper.instance.insertOfficerAction(
+          loanId: widget.loanId,
+          processId: processId,
+          actionType: status,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Offline: Action queued ($status). Will sync when online."), backgroundColor: Colors.orange),
+          );
+          
+          // Optimistic UI Update
+          _optimisticUpdate(processId, status);
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to save action: $e")));
+      }
+      return;
+    }
+
+    // --- Online Mode: Direct API Call ---
     try {
       final response = await http.post(
         Uri.parse('${kBaseUrl}bank/verify'),
@@ -65,7 +152,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Marked as $status"), backgroundColor: Colors.green));
         }
-        _fetchDetails(); // Refresh UI after successful verification
+        _fetchDetails(); // Refresh from server
       } else {
         throw Exception("Server error: ${response.statusCode}");
       }
@@ -74,6 +161,22 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to update: $e"), backgroundColor: Colors.red));
       }
+    }
+  }
+
+  void _optimisticUpdate(String processId, String status) {
+    if (_details == null) return;
+    
+    final processes = List<Map<String, dynamic>>.from(_details!['process'] ?? []);
+    final index = processes.indexWhere((p) => p['id'] == processId);
+    
+    if (index != -1) {
+      processes[index]['process_status'] = status;
+      setState(() {
+        _details!['process'] = processes;
+      });
+      // Update cache with new optimistic state
+      _writeToCache(_details!); 
     }
   }
 
@@ -87,6 +190,19 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
         elevation: 1,
         shadowColor: Colors.black26,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+           // Connection Indicator
+           FutureBuilder<bool>(
+             future: SyncService.realInternetCheck(),
+             builder: (context, snapshot) {
+               bool online = snapshot.data ?? false;
+               return Padding(
+                 padding: const EdgeInsets.all(16.0),
+                 child: Icon(online ? Icons.cloud_done : Icons.cloud_off, color: online ? Colors.green : Colors.grey),
+               );
+             }
+           )
+        ],
       ),
       body: _buildBody(),
     );
@@ -100,7 +216,16 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Text(_error, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+              const SizedBox(height: 16),
+              Text(_error, style: const TextStyle(color: Colors.black54), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton(onPressed: _fetchDetails, child: const Text("Retry"))
+            ],
+          ),
         ),
       );
     }
