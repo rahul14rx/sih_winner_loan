@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
@@ -60,6 +61,7 @@ class SyncService {
   static Future<void> syncAll() async {
     await syncBeneficiaries();
     await syncImages();
+    await syncOfficerActions(); // New Sync Step
   }
 
   static Future<void> syncImages() async {
@@ -86,7 +88,7 @@ class SyncService {
       var request = http.MultipartRequest("POST", Uri.parse('${kBaseUrl}upload'));
       
       try {
-        // REVERTED: No Decryption logic. Use raw file directly.
+        // No Decryption logic as requested. Use raw file directly.
         String cleanFilename = "sync_${loanId}_$processId$ext";
         request.files.add(await http.MultipartFile.fromPath(
              'file',
@@ -144,7 +146,6 @@ class SyncService {
 
       if (docPath != null && docPath.isNotEmpty) {
         try {
-           // REVERTED: No Decryption logic. Use raw file.
            request.files.add(await http.MultipartFile.fromPath('loan_document', docPath));
         } catch (e) {
           print("⚠️ Could not attach file for sync: $e");
@@ -158,6 +159,42 @@ class SyncService {
         }
       } catch (e) {
         print("❌ Network Error syncing beneficiary: $e");
+      }
+    }
+  }
+
+  // --- New: Sync Officer Actions ---
+  static Future<void> syncOfficerActions() async {
+    final actions = await DatabaseHelper.instance.getOfficerActions();
+    if (actions.isEmpty) return;
+
+    print("👮 Syncing ${actions.length} officer verification actions...");
+
+    for (var row in actions) {
+      final dbId = row[DatabaseHelper.colId] as int;
+      final loanId = row[DatabaseHelper.colLoanId] as String;
+      final processId = row[DatabaseHelper.colProcessId] as String;
+      final actionType = row[DatabaseHelper.colActionType] as String;
+
+      try {
+        final response = await http.post(
+          Uri.parse('${kBaseUrl}bank/verify'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'loan_id': loanId,
+            'process_id': processId,
+            'status': actionType
+          }),
+        );
+
+        if (response.statusCode == 200) {
+          print("✅ Officer Action Synced: Loan $loanId Step $processId -> $actionType");
+          await DatabaseHelper.instance.deleteOfficerAction(dbId);
+        } else {
+          print("❌ Failed to sync action: Server returned ${response.statusCode}");
+        }
+      } catch (e) {
+        print("❌ Error syncing officer action: $e");
       }
     }
   }
