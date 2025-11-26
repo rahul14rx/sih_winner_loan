@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/services/bank_service.dart';
@@ -6,9 +5,8 @@ import 'package:loan2/models/loan_application.dart';
 import 'package:loan2/pages/loan_detail_page.dart';
 import 'package:loan2/pages/create_beneficiary_page.dart';
 import 'package:loan2/pages/help_support_page.dart';
-import 'package:loan2/services/sync_service.dart';
-import 'package:loan2/services/database_helper.dart';
-
+import 'package:loan2/pages/history_page.dart';
+import 'package:loan2/pages/reports_page.dart';
 class BankDashboardPage extends StatefulWidget {
   const BankDashboardPage({super.key});
 
@@ -20,78 +18,26 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   final BankService _bankService = BankService();
   Map<String, int> _stats = {'pending': 0, 'verified': 0, 'rejected': 0};
   List<LoanApplication> _loans = [];
-  List<Map<String, dynamic>> _offlineLoans = []; // To store offline pending beneficiaries
   bool _isLoading = true;
-  
-  // Sync & Online Status
-  bool isOnline = false;
-  StreamSubscription? _syncSubscription;
-  StreamSubscription? _onlineStatusSubscription;
 
   @override
   void initState() {
     super.initState();
-    _initPage();
-
-    // Listen for background syncs to refresh UI
-    _syncSubscription = SyncService.onSync.listen((_) {
-      debugPrint("🔄 Bank Dashboard Refresh triggered by background sync");
-      _loadData(); // Reload to remove synced items from offline list and show in main list
-    });
-
-    // Listen for connectivity changes
-    _onlineStatusSubscription = SyncService.onOnlineStatusChanged.listen((online) {
-      if (online != isOnline) {
-        setState(() {
-          isOnline = online;
-        });
-        if (online) {
-          _loadData();
-        }
-      }
-    });
-  }
-  
-  @override
-  void dispose() {
-    _syncSubscription?.cancel();
-    _onlineStatusSubscription?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _initPage() async {
-    isOnline = await SyncService.realInternetCheck();
     _loadData();
   }
 
   Future<void> _loadData() async {
     try {
-      // 1. Load Offline Pending Beneficiaries
-      final offlineData = await DatabaseHelper.instance.getPendingBeneficiaries();
-      
-      // 2. Load Online Data (if possible)
-      if (isOnline) {
-        final statsFuture = _bankService.fetchDashboardStats();
-        final loansFuture = _bankService.fetchPendingLoans();
-        final results = await Future.wait([statsFuture, loansFuture]);
-        
-        if (mounted) {
-          setState(() {
-            _stats = results[0] as Map<String, int>;
-            _loans = results[1] as List<LoanApplication>;
-            _offlineLoans = offlineData;
-            _isLoading = false;
-          });
-        }
-      } else {
-        // Offline Mode: Keep existing _loans (maybe cached in service/repo?) 
-        // For now, strictly show offline pending ones.
-        if (mounted) {
-          setState(() {
-            _offlineLoans = offlineData;
-            _isLoading = false;
-          });
-        }
+      final statsFuture = _bankService.fetchDashboardStats();
+      final loansFuture = _bankService.fetchPendingLoans();
+      final results = await Future.wait([statsFuture, loansFuture]);
+
+      if (mounted) {
+        setState(() {
+          _stats = results[0] as Map<String, int>;
+          _loans = results[1] as List<LoanApplication>;
+          _isLoading = false;
+        });
       }
     } catch (e) {
       debugPrint("Dashboard Load Error: $e");
@@ -129,36 +75,6 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           );
         }),
-        actions: [
-           // Online/Offline Indicator
-          Container(
-            margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-            decoration: BoxDecoration(
-                color: isOnline ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withOpacity(0.5))
-            ),
-            child: Row(
-              children: [
-                Icon(
-                    isOnline ? Icons.wifi : Icons.wifi_off,
-                    color: Colors.white,
-                    size: 16
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  isOnline ? "Online" : "Offline",
-                  style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
       drawer: _buildProDrawer(context),
       floatingActionButton: FloatingActionButton.extended(
@@ -256,7 +172,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        "${_loans.length + _offlineLoans.length} Cases",
+                        "${_loans.length} Cases",
                         style: GoogleFonts.inter(
                           color: Colors.blue[800],
                           fontWeight: FontWeight.bold,
@@ -269,22 +185,10 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
               ),
             ),
 
-            // 3. Offline Pending List (if any)
-            if (_offlineLoans.isNotEmpty)
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                        (context, index) => _buildOfflineLoanCard(_offlineLoans[index]),
-                    childCount: _offlineLoans.length,
-                  ),
-                ),
-              ),
-
-            // 4. Online Loan List
+            // 3. Loan List
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: _loans.isEmpty && _offlineLoans.isEmpty
+              sliver: _loans.isEmpty
                   ? SliverToBoxAdapter(child: _buildEmptyState())
                   : SliverList(
                 delegate: SliverChildBuilderDelegate(
@@ -307,7 +211,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
       children: [
         _buildGlassStatCard(
           "Pending",
-          _stats['pending']! + _offlineLoans.length, // Include offline in pending stats
+          _stats['pending']!,
           Colors.orange,
           Icons.hourglass_top_rounded,
         ),
@@ -370,81 +274,6 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                 color: Colors.grey[600],
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- OFFLINE LOAN CARD ---
-  Widget _buildOfflineLoanCard(Map<String, dynamic> data) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.orange[50], // Slight tint to indicate offline/pending sync
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Icon(Icons.cloud_upload_rounded, color: Colors.orange[800]),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    data[DatabaseHelper.colName] ?? "Unknown",
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          "Sync Pending",
-                          style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: Colors.orange[900],
-                              fontWeight: FontWeight.w600
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        "• ₹${data[DatabaseHelper.colAmount]}",
-                        style: GoogleFonts.inter(
-                          color: Colors.grey[700],
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
               ),
             ),
           ],
@@ -629,8 +458,15 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateBeneficiaryPage()));
                 }),
-                _buildDrawerItem(Icons.history_rounded, "History", false, () {}),
-                _buildDrawerItem(Icons.analytics_rounded, "Reports", false, () {}),
+                _buildDrawerItem(Icons.history_rounded, "History", false, () {Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryPage()));}),
+                _buildDrawerItem(Icons.analytics_rounded, "Reports", false, () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ReportsPage()),
+                  );
+                }),
                 const Divider(indent: 20, endIndent: 20, height: 30),
                 _buildDrawerItem(Icons.settings_rounded, "Settings", false, () {}),
                 _buildDrawerItem(Icons.help_outline_rounded, "Help & Support", false, () {
