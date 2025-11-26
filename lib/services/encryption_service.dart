@@ -2,29 +2,33 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:path/path.dart' as p;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 class EncryptionService {
-  static final _storage = const FlutterSecureStorage();
-  static const _keyName = 'aes_gcm_key';
+  static const _keyFileName = 'local_enc_key.txt';
   static enc.Key? _key;
 
-  /// Initialize the encryption key.
+  /// Initialize the encryption key by storing/reading it from a local file.
+  /// (Not using OS KeyRing as requested)
   static Future<void> init() async {
     if (_key != null) return;
 
     try {
-      String? keyBase64 = await _storage.read(key: _keyName);
+      final directory = await getApplicationDocumentsDirectory();
+      final keyFile = File(p.join(directory.path, _keyFileName));
 
-      if (keyBase64 == null) {
-        print("🔐 Generating new secure encryption key...");
-        final newKey = enc.Key.fromSecureRandom(32);
-        keyBase64 = newKey.base64;
-        await _storage.write(key: _keyName, value: keyBase64);
-        _key = newKey;
-      } else {
+      if (await keyFile.exists()) {
+        // Read existing key
+        final keyBase64 = await keyFile.readAsString();
         _key = enc.Key.fromBase64(keyBase64);
+        print("🔐 Loaded local encryption key.");
+      } else {
+        // Generate new key
+        print("🔐 Generating new local encryption key...");
+        final newKey = enc.Key.fromSecureRandom(32);
+        await keyFile.writeAsString(newKey.base64);
+        _key = newKey;
+        print("🔐 Saved local encryption key to file.");
       }
     } catch (e) {
       print("❌ Error initializing encryption key: $e");

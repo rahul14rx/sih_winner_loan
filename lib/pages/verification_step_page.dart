@@ -7,7 +7,6 @@ import 'package:loan2/pages/movement_verification_page.dart';
 import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
 import 'package:loan2/services/sync_service.dart';
-import 'package:loan2/services/encryption_service.dart'; // Added
 
 class VerificationStepPage extends StatefulWidget {
   final String loanId;
@@ -94,23 +93,25 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
 
     setState(() => _isUploading = true);
 
+    int? dbId;
+
     try {
-      // 1. Encrypt the file before saving locally
-      File encryptedFile = await EncryptionService.encryptFile(_mediaFile!);
+      // REVERTED: No Encryption. Use raw path.
+      String finalPath = _mediaFile!.path;
       
-      // 2. Save Encrypted Path to DB
-      int dbId = await DatabaseHelper.instance.insertImagePath(
+      // Save Raw Path to DB
+      dbId = await DatabaseHelper.instance.insertImagePath(
         userId: widget.userId,
         processId: widget.step.id,
         processIntId: widget.step.processId,
         loanId: widget.loanId,
-        filePath: encryptedFile.path, // Store encrypted path
+        filePath: finalPath,
       );
 
       bool isOnline = await SyncService.realInternetCheck();
 
       if (!isOnline) {
-        await DatabaseHelper.instance.queueForUpload(dbId);
+        await DatabaseHelper.instance.queueForUpload(dbId!); 
         if (mounted) {
           setState(() => _isUploading = false);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -119,7 +120,7 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
                   children: [
                     Icon(Icons.wifi_off, color: Colors.white),
                     SizedBox(width: 10),
-                    Expanded(child: Text("Saved offline (Encrypted). Will sync when online.")),
+                    Expanded(child: Text("Saved offline. Will sync when online.")),
                   ],
                 ),
                 backgroundColor: Colors.orange,
@@ -140,32 +141,13 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
         request.fields['utilization_amount'] = _amountController.text;
       }
 
-      // 3. Decrypt on the fly for upload (Server expects raw file)
-      // We can read the encrypted file bytes and decrypt them, then upload bytes.
-      // Or use the original _mediaFile if we assume it hasn't been deleted yet.
-      // To be safe and consistent with the "store encrypted" philosophy, let's decrypt the encrypted file.
-      final decryptedBytes = await EncryptionService.decryptFileToBytes(encryptedFile);
-      
-      // We need a filename. original path has it.
-      final filename = _mediaFile!.path.split('/').last;
-      
-      request.files.add(http.MultipartFile.fromBytes(
-          'file', 
-          decryptedBytes,
-          filename: filename
-      ));
+      // REVERTED: Raw Upload
+      request.files.add(await http.MultipartFile.fromPath('file', finalPath));
 
       var response = await request.send().timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
-        await DatabaseHelper.instance.deleteImage(dbId, deleteFile: false); // Keep entry? Or delete?
-        // Usually we delete the DB entry if uploaded.
-        // We should also delete the encrypted file? 
-        // DatabaseHelper.deleteImage handles file deletion if deleteFile: true.
-        // But we passed deleteFile: false in previous code. 
-        // If we want to keep history, we keep it. If not, delete.
-        // Let's keep it consistent with previous code (false).
-        
+        await DatabaseHelper.instance.deleteImage(dbId!, deleteFile: false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Uploaded successfully!"), backgroundColor: Colors.green));
           Navigator.pop(context, true);
@@ -175,28 +157,13 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
       }
     } catch (e) {
       debugPrint("Upload failed: $e");
-      // If failed (and dbId exists), queue it.
-      // But we need dbId. It's defined inside try block? No, waiting for scope issues.
-      // Actually I moved dbId inside try block.
-      // I should handle this better. 
-      // Since dbId is needed for queueing, I should define it outside or assume if exception happens before dbId, we fail.
-      // But here, if Encryption fails, we fail. If Insert fails, we fail.
-      // If Upload fails, we assume dbId is valid.
-      
-      // Re-querying last inserted? No.
-      // Let's just catch and show error for now. 
-      // Real robustness would require defining dbId outside. 
-      // But assuming insertImagePath works, we rely on SyncService to pick it up later if we missed queueing?
-      // No, SyncService only picks 'submitted=1'.
-      // So we MUST queue it on error.
-      
-      // For now, simplest fix: If upload fails, we might have stranded the row as submitted=0.
-      // But the user can just tap "Start" again, and it will re-submit.
-      // So it's acceptable UX (Retry).
+      if (dbId != null) {
+        await DatabaseHelper.instance.queueForUpload(dbId);
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload failed: ${e.toString()}"), backgroundColor: Colors.red));
-        // Don't pop, let user retry.
+        Navigator.pop(context, true); 
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);

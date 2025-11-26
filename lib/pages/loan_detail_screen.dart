@@ -9,7 +9,7 @@ import 'package:loan2/services/api.dart';
 import 'package:loan2/services/beneficiary_service.dart';
 import 'package:loan2/services/database_helper.dart';
 import 'package:loan2/services/sync_service.dart';
-import 'package:loan2/services/encryption_service.dart'; // Added
+// EncryptionService import removed as we don't encrypt movement anymore
 
 class LoanDetailScreen extends StatefulWidget {
   final BeneficiaryLoan loan;
@@ -190,17 +190,16 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
     setState(() => _isRefreshing = true); 
 
     try {
-      // 1. Encrypt file locally
+      // 1. NO Encryption for Movement (Video)
       File originalFile = File(filePath);
-      File encryptedFile = await EncryptionService.encryptFile(originalFile);
-
-      // 2. Save Local (Encrypted Path)
+      
+      // 2. Save Local (Raw Path)
       int dbId = await DatabaseHelper.instance.insertImagePath(
         userId: _currentLoan.userId,
         processId: step.id,
         processIntId: step.processId,
         loanId: _currentLoan.loanId,
-        filePath: encryptedFile.path, // Save encrypted path
+        filePath: originalFile.path, 
       );
 
       // 3. Check Online
@@ -211,7 +210,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text("Movement saved offline (Encrypted). Will sync when online."),
+                content: Text("Movement saved offline. Will sync when online."),
                 backgroundColor: Colors.orange,
               )
           );
@@ -220,18 +219,13 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
         return;
       }
 
-      // 4. Upload Online (Decrypt on the fly)
+      // 4. Upload Online (Raw File)
       var request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}upload'));
       request.fields['loan_id'] = _currentLoan.loanId;
       request.fields['process_id'] = step.id;
       request.fields['user_id'] = _currentLoan.userId;
 
-      // Decrypt for upload
-      final decryptedBytes = await EncryptionService.decryptFileToBytes(encryptedFile);
-      // Use original filename/extension for correct processing on server (e.g. mp4)
-      final filename = originalFile.path.split('/').last;
-
-      request.files.add(http.MultipartFile.fromBytes('file', decryptedBytes, filename: filename));
+      request.files.add(await http.MultipartFile.fromPath('file', originalFile.path));
 
       var response = await request.send();
       if (response.statusCode == 200) {
@@ -247,7 +241,6 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
 
     } catch (e) {
        print("Movement upload failed: $e");
-       // Note: We assume dbId was inserted successfully if encryption worked.
        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload failed. Check connection."), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
@@ -423,7 +416,6 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
   }
 
   void _startVerification(dynamic step) {
-    // FIXED: Only check strictly for 'movement' type
     if (step.dataType == 'movement') {
        Navigator.push(
         context,
@@ -436,7 +428,6 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
         }
       });
     } else {
-      // Handle 'video' and 'image' types here using the standard picker
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -448,7 +439,6 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
         ),
       ).then((result) {
         if (result == true) {
-          // CRITICAL FIX: Manually update local status
           _markStepAsPendingReview(step.id);
           _refreshLoanData();
         }
