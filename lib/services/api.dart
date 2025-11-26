@@ -5,7 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 
 // Change this to your Flask host
-const String kBaseUrl = 'http://10.10.4.22:5000/';
+const String kBaseUrl = 'http://10.10.4.34:5000/';
 
 final Connectivity _connectivity = Connectivity();
 
@@ -81,4 +81,15 @@ Future<Map<String, dynamic>> getJson(
     // Connection failed, return empty map to avoid UI exception
     return <String, dynamic>{};
   }
+}
+
+Future<Map<String, dynamic>> login_user(String officerId, String password) async {
+  return await postJson(
+    'login',
+    body: {
+      'login_id': officerId,
+      'password': password,
+      'role': 'officer',
+    },
+  );
 }

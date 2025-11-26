@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/pages/bank_dashboard_page.dart';
 import 'package:loan2/pages/beneficiary_dashboard.dart';
+import 'package:loan2/services/api.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -61,6 +62,9 @@ class _LoginPageState extends State<LoginPage> {
 
   // --- OFFICIAL LOGIN SHEET ---
   void _showBankOfficialLogin(BuildContext context) {
+    final officerIdController = TextEditingController();
+    final passwordController = TextEditingController();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -70,19 +74,40 @@ class _LoginPageState extends State<LoginPage> {
         subtitle: getStr('official_login_desc'),
         children: [
           TextField(
+            controller: officerIdController,
             decoration: _inputDecoration(getStr('officer_id'), Icons.badge_outlined),
           ),
           const SizedBox(height: 20),
           TextField(
+            controller: passwordController,
             obscureText: true,
             decoration: _inputDecoration(getStr('password'), Icons.lock_outline_rounded),
           ),
           const SizedBox(height: 40),
           _PrimaryButton(
             text: getStr('secure_login_btn'),
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const BankDashboardPage()));
+            onPressed: () async {
+              final officerId = officerIdController.text;
+              final password = passwordController.text;
+
+              if (officerId.isNotEmpty && password.isNotEmpty) {
+                final result = await login_user(officerId, password);
+                if (result.isNotEmpty && context.mounted) {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BankDashboardPage()),
+                  );
+                } else if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Login Failed. Check credentials.")),
+                  );
+                }
+              } else if (context.mounted) {
+                 ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Fields cannot be empty.")),
+                );
+              }
             },
           ),
         ],
