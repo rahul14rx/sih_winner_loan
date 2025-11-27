@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
-import 'package:loan2/services/api.dart'; // For kBaseUrl
-import 'package:loan2/services/database_helper.dart'; // Added
-import 'package:loan2/services/sync_service.dart'; // Added
-import 'package:loan2/services/encryption_service.dart'; // Added Encryption
+import 'package:loan2/services/bank_service.dart';
+import 'package:loan2/services/database_helper.dart'; 
+import 'package:loan2/services/sync_service.dart'; 
+import 'package:loan2/services/encryption_service.dart'; 
 
 class CreateBeneficiaryPage extends StatefulWidget {
-  const CreateBeneficiaryPage({super.key});
+  final String officerId;
+  const CreateBeneficiaryPage({super.key, required this.officerId});
 
   @override
   State<CreateBeneficiaryPage> createState() => _CreateBeneficiaryPageState();
@@ -59,13 +59,15 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     setState(() => _isLoading = true);
 
     // Gather Data
-    final officerId = "OFF1001"; // Hardcoded for demo
-    final name = _nameController.text.trim();
-    final phone = _phoneController.text.trim();
-    final amount = _amountController.text.trim();
-    final loanId = _loanIdController.text.trim();
-    final scheme = _selectedScheme ?? "";
-    final loanType = _selectedLoanType ?? "";
+    final data = {
+      'officer_id': widget.officerId,
+      'name': _nameController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'amount': _amountController.text.trim(),
+      'loan_id': _loanIdController.text.trim(),
+      'scheme': _selectedScheme ?? "",
+      'loan_type': _selectedLoanType ?? "",
+    };
     final docPath = _selectedDoc?.path;
 
     try {
@@ -73,66 +75,49 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       bool isOnline = await SyncService.realInternetCheck();
 
       if (!isOnline) {
-        await _saveOffline(officerId, name, phone, amount, loanId, scheme, loanType, docPath);
+        await _saveOffline(widget.officerId, data, docPath);
         return;
       }
 
-      // Create Multipart Request (Required for file upload)
-      var request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}bank/beneficiary'));
+      final bankService = BankService();
+      final success = await bankService.createBeneficiary(data, docPath: docPath);
 
-      // Add Fields
-      request.fields['officer_id'] = officerId;
-      request.fields['name'] = name;
-      request.fields['phone'] = phone;
-      request.fields['amount'] = amount;
-      request.fields['loan_id'] = loanId;
-      request.fields['scheme'] = scheme;
-      request.fields['loan_type'] = loanType;
-
-      // Add File if selected (Online upload does NOT need encryption, server expects standard file)
-      if (docPath != null) {
-        request.files.add(await http.MultipartFile.fromPath('loan_document', docPath));
-      }
-
-      // Send
-      var response = await request.send();
-      final respStr = await response.stream.bytesToString();
-
-      if (response.statusCode == 201) {
+      if (success) {
         if (mounted) _showSuccessDialog(isOffline: false);
       } else {
-        throw Exception("Server Error: ${response.statusCode} - $respStr");
+        throw Exception("Server returned an error");
       }
     } catch (e) {
       debugPrint("API Error, saving offline: $e");
       // If network call fails, save offline
-      await _saveOffline(officerId, name, phone, amount, loanId, scheme, loanType, docPath);
+      await _saveOffline(widget.officerId, data, docPath);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _saveOffline(String officerId, String name, String phone, String amount, String loanId, String scheme, String loanType, String? docPath) async {
+  Future<void> _saveOffline(
+      String officerId, Map<String, String> data, String? docPath) async {
     try {
       String? encryptedDocPath;
-      
+
       // Encrypt file before saving to DB
       if (docPath != null) {
         final originalFile = File(docPath);
         if (await originalFile.exists()) {
-           final encryptedFile = await EncryptionService.encryptFile(originalFile);
-           encryptedDocPath = encryptedFile.path;
+          final encryptedFile = await EncryptionService.encryptFile(originalFile);
+          encryptedDocPath = encryptedFile.path;
         }
       }
 
       await DatabaseHelper.instance.insertPendingBeneficiary(
         officerId: officerId,
-        name: name,
-        phone: phone,
-        amount: amount,
-        loanId: loanId,
-        scheme: scheme,
-        loanType: loanType,
+        name: data['name']!,
+        phone: data['phone']!,
+        amount: data['amount']!,
+        loanId: data['loan_id']!,
+        scheme: data['scheme']!,
+        loanType: data['loan_type']!,
         docPath: encryptedDocPath, // Save encrypted path
       );
 
@@ -140,7 +125,9 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error saving offline: $e"), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text("Error saving offline: $e"),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -163,11 +150,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
               child: Icon(
                   isOffline ? Icons.cloud_queue : Icons.check_circle,
                   color: isOffline ? Colors.orange : Colors.green,
-                  size: 50
-              ),
+                  size: 50),
             ),
             const SizedBox(height: 16),
-            Text(isOffline ? "Saved Offline" : "Beneficiary Added", style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+            Text(isOffline ? "Saved Offline" : "Beneficiary Added",
+                style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
           ],
         ),
         content: Text(
@@ -229,11 +216,13 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                   label: "Mobile Number",
                   icon: Icons.phone_android_rounded,
                   inputType: TextInputType.phone,
-                  formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+                  formatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10)
+                  ],
                   validator: (v) => v!.length != 10 ? "Invalid Number" : null,
                 ),
               ]),
-
               const SizedBox(height: 24),
               _buildSectionHeader("Loan Details"),
               _buildCard([
@@ -268,11 +257,9 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                   icon: Icons.category_rounded,
                 ),
               ]),
-
               const SizedBox(height: 24),
               _buildSectionHeader("Documents"),
               _buildUploadCard(),
-
               const SizedBox(height: 40),
               SizedBox(
                 width: double.infinity,
@@ -281,13 +268,20 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                   onPressed: _isLoading ? null : _submitForm,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF138808),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
                     elevation: 4,
                     shadowColor: const Color(0xFF138808).withOpacity(0.4),
                   ),
                   child: _isLoading
-                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : Text("Create & Send SMS", style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2))
+                      : Text("Create & Send SMS",
+                          style: GoogleFonts.poppins(
+                              fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),
               const SizedBox(height: 20),
@@ -303,7 +297,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       padding: const EdgeInsets.only(bottom: 12, left: 4),
       child: Text(
         title,
-        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey[600], letterSpacing: 0.5),
+        style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[600],
+            letterSpacing: 0.5),
       ),
     );
   }
@@ -315,7 +313,10 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4)),
         ],
         border: Border.all(color: Colors.grey.shade200),
       ),
@@ -342,9 +343,14 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         prefixIcon: Icon(icon, color: const Color(0xFF435E91), size: 22),
         filled: true,
         fillColor: const Color(0xFFF9FAFB),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFF9933), width: 1.5)),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade200)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFFF9933), width: 1.5)),
       ),
     );
   }
@@ -358,7 +364,9 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
   }) {
     return DropdownButtonFormField<String>(
       value: value,
-      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: GoogleFonts.inter()))).toList(),
+      items: items
+          .map((e) => DropdownMenuItem(value: e, child: Text(e, style: GoogleFonts.inter())))
+          .toList(),
       onChanged: onChanged,
       validator: (v) => v == null ? "Required" : null,
       decoration: InputDecoration(
@@ -367,8 +375,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         prefixIcon: Icon(icon, color: const Color(0xFF435E91), size: 22),
         filled: true,
         fillColor: const Color(0xFFF9FAFB),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade200)),
       ),
     );
   }
@@ -383,14 +394,18 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _selectedDoc != null ? Colors.green : Colors.grey.shade300, style: BorderStyle.solid),
+          border: Border.all(
+              color: _selectedDoc != null ? Colors.green : Colors.grey.shade300,
+              style: BorderStyle.solid),
         ),
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _selectedDoc != null ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
+                color: _selectedDoc != null
+                    ? Colors.green.withOpacity(0.1)
+                    : Colors.blue.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -406,7 +421,9 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              _selectedDoc != null ? _selectedDoc!.path.split('/').last : "PDF or Image (Max 5MB)",
+              _selectedDoc != null
+                  ? _selectedDoc!.path.split('/').last
+                  : "PDF or Image (Max 5MB)",
               style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500]),
               textAlign: TextAlign.center,
             ),

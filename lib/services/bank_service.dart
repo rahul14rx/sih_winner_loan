@@ -7,9 +7,9 @@ class BankService {
   // --- DASHBOARD ANALYTICS ---
 
   // fetchDashboardData: Gets summary counts (Pending, Verified, Rejected)
-  Future<Map<String, int>> fetchDashboardStats() async {
+  Future<Map<String, int>> fetchDashboardStats(String officerId) async {
     try {
-      final response = await http.get(Uri.parse('${kBaseUrl}bank/stats'));
+      final response = await http.get(Uri.parse('${kBaseUrl}bank/stats?officer_id=$officerId'));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -30,10 +30,10 @@ class BankService {
   // --- LOAN MANAGEMENT ---
 
   // fetchPendingLoans: Gets the list of loans needing verification
-  Future<List<LoanApplication>> fetchPendingLoans() async {
+  Future<List<LoanApplication>> fetchPendingLoans(String officerId) async {
     try {
       // Status 'pending' maps to 'not verified' on the backend
-      final response = await http.get(Uri.parse('${kBaseUrl}bank/loans?status=pending'));
+      final response = await http.get(Uri.parse('${kBaseUrl}bank/loans?status=pending&officer_id=$officerId'));
 
       if (response.statusCode == 200) {
         final List<dynamic> body = jsonDecode(response.body)['data'];
@@ -49,23 +49,32 @@ class BankService {
   // --- BENEFICIARY CREATION ---
 
   // createBeneficiary: Sends new beneficiary data to the server
-  Future<bool> createBeneficiary(Map<String, dynamic> data) async {
+  Future<bool> createBeneficiary(Map<String, String> data, {String? docPath}) async {
+    var request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}bank/beneficiary'));
+    request.fields.addAll(data);
+
+    if (docPath != null && docPath.isNotEmpty) {
+      try {
+        request.files.add(await http.MultipartFile.fromPath('loan_document', docPath));
+      } catch (e) {
+        throw Exception('Error attaching document: $e');
+      }
+    }
+
     try {
-      final response = await http.post(
-        Uri.parse('${kBaseUrl}bank/beneficiary'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(data),
-      );
+      final response = await request.send();
 
       if (response.statusCode == 201) {
         return true; // Success
       } else {
-        // Extract error message from server response if available
         String errorMsg = 'Unknown error';
         try {
-          final body = jsonDecode(response.body);
-          errorMsg = body['error'] ?? body['message'] ?? 'Server error';
-        } catch (_) {}
+          final responseBody = await response.stream.bytesToString();
+          final body = jsonDecode(responseBody);
+          errorMsg = body['error'] ?? body['message'] ?? 'Server error (${response.statusCode})';
+        } catch (_) {
+          errorMsg = 'Server error (${response.statusCode})';
+        }
         throw Exception(errorMsg);
       }
     } catch (e) {

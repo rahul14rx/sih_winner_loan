@@ -7,8 +7,10 @@ import 'package:loan2/pages/create_beneficiary_page.dart';
 import 'package:loan2/pages/help_support_page.dart';
 import 'package:loan2/pages/history_page.dart';
 import 'package:loan2/pages/reports_page.dart';
+
 class BankDashboardPage extends StatefulWidget {
-  const BankDashboardPage({super.key});
+  final String officerId;
+  const BankDashboardPage({super.key, required this.officerId});
 
   @override
   State<BankDashboardPage> createState() => _BankDashboardPageState();
@@ -28,8 +30,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
 
   Future<void> _loadData() async {
     try {
-      final statsFuture = _bankService.fetchDashboardStats();
-      final loansFuture = _bankService.fetchPendingLoans();
+      final statsFuture = _bankService.fetchDashboardStats(widget.officerId);
+      final loansFuture = _bankService.fetchPendingLoans(widget.officerId);
       final results = await Future.wait([statsFuture, loansFuture]);
 
       if (mounted) {
@@ -81,7 +83,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const CreateBeneficiaryPage()),
+            MaterialPageRoute(
+                builder: (context) =>
+                    CreateBeneficiaryPage(officerId: widget.officerId)),
           ).then((_) => _loadData());
         },
         label: Text(
@@ -124,7 +128,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Welcome, Rahul",
+                          "Welcome, ${widget.officerId}",
                           style: GoogleFonts.poppins(
                             color: Colors.white,
                             fontSize: 26,
@@ -423,7 +427,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
               ),
             ),
             accountName: Text(
-              "Rahul Kumar",
+              widget.officerId,
               style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             accountEmail: Container(
@@ -433,14 +437,14 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                "ID: OFF1001 | New Delhi",
+                "ID: ${widget.officerId} | New Delhi",
                 style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 12),
               ),
             ),
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
               child: Text(
-                "RK",
+                widget.officerId.isNotEmpty ? widget.officerId.substring(0, 2).toUpperCase() : "??",
                 style: GoogleFonts.poppins(
                   fontSize: 24,
                   color: const Color(0xFFFF9933),
@@ -456,7 +460,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                 _buildDrawerItem(Icons.dashboard_rounded, "Dashboard", true, () => Navigator.pop(context)),
                 _buildDrawerItem(Icons.person_add_alt_1_rounded, "New Beneficiary", false, () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateBeneficiaryPage()));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => CreateBeneficiaryPage(officerId: widget.officerId)));
                 }),
                 _buildDrawerItem(Icons.history_rounded, "History", false, () {Navigator.pop(context);
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryPage()));}),

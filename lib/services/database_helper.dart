@@ -1,5 +1,6 @@
 // lib/services/database_helper.dart
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -210,11 +211,18 @@ class DatabaseHelper {
       if (path != null) {
         try {
           final f = File(path);
-          if (await f.exists()) await f.delete();
-        } catch (_) {}
+          if (await f.exists()) {
+            await f.delete();
+            debugPrint("✅ Local file deleted: $path");
+          } 
+        } catch (e) {
+           debugPrint("❌ Error deleting local file: $e");
+        }
       }
     }
-    return await db.delete(tableImages, where: '$colId = ?', whereArgs: [id]);
+    final result = await db.delete(tableImages, where: '$colId = ?', whereArgs: [id]);
+    debugPrint("✅ Local DB record deleted from table '$tableImages' with id: $id");
+    return result; 
   }
 
   // --- Beneficiary Methods (Offline Support) ---
@@ -251,7 +259,9 @@ class DatabaseHelper {
 
   Future<int> deletePendingBeneficiary(int id) async {
     final db = await database;
-    return await db.delete(tableBeneficiaries, where: '$colId = ?', whereArgs: [id]);
+    final result = await db.delete(tableBeneficiaries, where: '$colId = ?', whereArgs: [id]);
+    debugPrint("✅ Local DB record deleted from table '$tableBeneficiaries' with id: $id");
+    return result;
   }
 
   // --- Officer Action Methods (New) ---
@@ -278,6 +288,8 @@ class DatabaseHelper {
 
   Future<int> deleteOfficerAction(int id) async {
     final db = await database;
-    return await db.delete(tableOfficerActions, where: '$colId = ?', whereArgs: [id]);
+    final result = await db.delete(tableOfficerActions, where: '$colId = ?', whereArgs: [id]);
+    debugPrint("✅ Local DB record deleted from table '$tableOfficerActions' with id: $id");
+    return result;
   }
 }

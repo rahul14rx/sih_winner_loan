@@ -96,7 +96,7 @@ class _LoginPageState extends State<LoginPage> {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const BankDashboardPage()),
+                    MaterialPageRoute(builder: (_) => BankDashboardPage(officerId: officerId)),
                   );
                 } else if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
