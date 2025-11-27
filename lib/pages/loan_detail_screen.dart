@@ -41,7 +41,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
   void initState() {
     super.initState();
     _currentLoan = widget.loan;
-    
+
     // Calculate initial used amount (mock)
     _amountUsed = _currentLoan.amount * 0.45;
 
@@ -49,7 +49,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshLoanData();
     });
-    
+
     _checkLocalUploads();
 
     // 1. Listen for Internet connection coming back
@@ -65,7 +65,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
       debugPrint("🔄 Sync completed: Updating UI...");
       _refreshLoanData(silent: true);
     });
-    
+
     // 3. Listen for Specific Item Sync
     _itemSyncSub = SyncService.onItemSynced.listen((event) {
       if (event['loanId'] == _currentLoan.loanId) {
@@ -140,7 +140,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
             status: updatedLoan.status,
             processes: _currentLoan.processes, // PRESERVE LOCAL PROCESS LIST
           );
-          
+
           _amountUsed = _currentLoan.amount * 0.45; // Update mock logic based on new amount
           if (!silent) _isRefreshing = false;
         });
@@ -153,7 +153,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
       }
     }
   }
-  
+
   // Helper to manually update a step's status locally after successful upload
   void _markStepAsPendingReview(String stepId) {
     List<ProcessStep> updatedProcesses = _currentLoan.processes.map((step) {
@@ -187,19 +187,19 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
   Future<void> _handleMovementResult(String filePath, ProcessStep step) async {
     if (filePath.isEmpty) return;
 
-    setState(() => _isRefreshing = true); 
+    setState(() => _isRefreshing = true);
 
     try {
       // 1. NO Encryption for Movement (Video)
       File originalFile = File(filePath);
-      
+
       // 2. Save Local (Raw Path)
       int dbId = await DatabaseHelper.instance.insertImagePath(
         userId: _currentLoan.userId,
         processId: step.id,
         processIntId: step.processId,
         loanId: _currentLoan.loanId,
-        filePath: originalFile.path, 
+        filePath: originalFile.path,
       );
 
       // 3. Check Online
@@ -214,7 +214,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
                 backgroundColor: Colors.orange,
               )
           );
-          _refreshLoanData(); 
+          _refreshLoanData();
         }
         return;
       }
@@ -240,8 +240,8 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
       }
 
     } catch (e) {
-       print("Movement upload failed: $e");
-       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload failed. Check connection."), backgroundColor: Colors.red));
+      print("Movement upload failed: $e");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload failed. Check connection."), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
@@ -262,10 +262,10 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
         iconTheme: const IconThemeData(color: Colors.black),
         actions: [
           if (_isRefreshing)
-             const Padding(
-               padding: EdgeInsets.all(16.0),
-               child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black)),
-             )
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black)),
+            )
           else
             IconButton(icon: const Icon(Icons.refresh), onPressed: _refreshLoanData),
         ],
@@ -337,12 +337,12 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
               ),
               child: Column(
                 children: [
-                  _buildDetailRow("Beneficiary", _currentLoan.applicantName), 
+                  _buildDetailRow("Beneficiary", _currentLoan.applicantName),
                   _buildDetailRow("Loan ID", _currentLoan.loanId),
-                  _buildDetailRow("Type", _currentLoan.loanType), 
-                  _buildDetailRow("Scheme", _currentLoan.scheme), 
+                  _buildDetailRow("Type", _currentLoan.loanType),
+                  _buildDetailRow("Scheme", _currentLoan.scheme),
                   _buildDetailRow("Date Applied", _currentLoan.dateApplied),
-                  _buildDetailRow("Sanctioned Amount", "₹${_currentLoan.amount.toInt()}"), 
+                  _buildDetailRow("Sanctioned Amount", "₹${_currentLoan.amount.toInt()}"),
                   _buildDetailRow("Status", _currentLoan.status),
                 ],
               ),
@@ -417,7 +417,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
 
   void _startVerification(dynamic step) {
     if (step.dataType == 'movement') {
-       Navigator.push(
+      Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => const MovementScreen(),

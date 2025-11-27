@@ -7,6 +7,7 @@ import 'package:loan2/pages/create_beneficiary_page.dart';
 import 'package:loan2/pages/help_support_page.dart';
 import 'package:loan2/pages/history_page.dart';
 import 'package:loan2/pages/reports_page.dart';
+import 'package:loan2/pages/history_page.dart';
 
 class BankDashboardPage extends StatefulWidget {
   final String officerId;
@@ -462,14 +463,26 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (context) => CreateBeneficiaryPage(officerId: widget.officerId)));
                 }),
-                _buildDrawerItem(Icons.history_rounded, "History", false, () {Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryPage()));}),
+    _buildDrawerItem(Icons.history_rounded, "History", false, () {
+    Navigator.pop(context);
+    Navigator.push(
+    context,
+    MaterialPageRoute(
+    builder: (_) => HistoryPage(officerId: widget.officerId),
+    ),
+    );
+    }),
+
                 _buildDrawerItem(Icons.analytics_rounded, "Reports", false, () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const ReportsPage()),
+                    MaterialPageRoute(
+                      builder: (_) => ReportsPage(officerId: widget.officerId),
+                    ),
                   );
+
+
                 }),
                 const Divider(indent: 20, endIndent: 20, height: 30),
                 _buildDrawerItem(Icons.settings_rounded, "Settings", false, () {}),

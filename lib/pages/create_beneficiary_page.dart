@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:loan2/services/bank_service.dart';
-import 'package:loan2/services/database_helper.dart'; 
-import 'package:loan2/services/sync_service.dart'; 
-import 'package:loan2/services/encryption_service.dart'; 
+import 'package:http/http.dart' as http;
+import 'package:loan2/services/api.dart';
+import 'package:loan2/services/database_helper.dart';
+import 'package:loan2/services/sync_service.dart';
+import 'package:loan2/services/encryption_service.dart';
 
 class CreateBeneficiaryPage extends StatefulWidget {
   final String officerId;
@@ -16,34 +17,137 @@ class CreateBeneficiaryPage extends StatefulWidget {
   State<CreateBeneficiaryPage> createState() => _CreateBeneficiaryPageState();
 }
 
+
 class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  // Controllers
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _amountController = TextEditingController();
   final _loanIdController = TextEditingController();
 
-  // Dropdown Values
   String? _selectedScheme;
   String? _selectedLoanType;
-  File? _selectedDoc; // Stores the loan document
+  String? _selectedPurpose;
+  File? _selectedDoc;
+
+  static const _accent = Color(0xFFFF9933);
 
   final List<String> _schemes = ['NBCFDC', 'NSFDC', 'NSKFDC'];
-  final List<String> _loanTypes = [
-    'Agriculture (Tractor)',
-    'Small Business',
-    'Education',
-    'Transport (E-Rickshaw)'
-  ];
 
-  // --- File Picker Logic ---
+  final Map<String, List<String>> _loanTypesByScheme = {
+    'NBCFDC': [
+      'General Term Loan',
+      'Micro-credit Loan',
+      'Education Loan',
+      'Skill Development Loan',
+      'Entrepreneurial Development Loan',
+      'Livelihood Loan',
+    ],
+    'NSKFDC': [
+      'Self-Employment Scheme for Liberation & Rehabilitation of Safai Karamchari (SRMS)',
+      'Sanitation Equipment Loan',
+      'Small Business Loans',
+      'Skill Development Loan',
+    ],
+    'NSFDC': [
+      'Term Loan',
+      'Micro-Finance Loan',
+      'Skill Development Loan',
+      'Education Loan',
+      'Livelihood Loan',
+    ],
+  };
+
+  final Map<String, Map<String, List<String>>> _purposeBySchemeCategory = {
+    'NBCFDC': {
+      'General Term Loan': [
+        'Auto Rickshaws',
+        'Tractors',
+        'Shop construction / purchase',
+      ],
+      'Micro-credit Loan': [
+        'Sewing Machines',
+        'Cows',
+      ],
+      'Education Loan': [
+        'Laptop',
+        'Fees paid for admissions',
+        'Courses',
+      ],
+      'Skill Development Loan': [
+        'Technical Courses',
+        'Non-Technical Courses',
+      ],
+      'Entrepreneurial Development Loan': [
+        'Laptop',
+      ],
+      'Livelihood Loan': [
+        'Sewing Machine',
+        'Cows',
+      ],
+    },
+    'NSKFDC': {
+      'Self-Employment Scheme for Liberation & Rehabilitation of Safai Karamchari (SRMS)': [
+        'E-Rickshaws',
+        'Construction of shops / kiosks',
+      ],
+      'Sanitation Equipment Loan': [
+        'PPE kits (Safety gears)',
+      ],
+      'Small Business Loans': [
+        'Sewing Machine',
+      ],
+      'Skill Development Loan': [
+        'Courses',
+      ],
+    },
+    'NSFDC': {
+      'Term Loan': [
+        'Tractor',
+      ],
+      'Micro-Finance Loan': [
+        'Sewing Machine',
+      ],
+      'Skill Development Loan': [
+        'Course',
+        'Laptop',
+      ],
+      'Education Loan': [
+        'Admission Fees',
+        'Hostel Fees',
+        'Laptop',
+        'Courses',
+      ],
+      'Livelihood Loan': [
+        'Sewing Machine',
+        'Cows',
+      ],
+    },
+  };
+
+  List<String> get _currentLoanTypes => _loanTypesByScheme[_selectedScheme] ?? const [];
+
+  List<String> get _currentPurposes {
+    final s = _selectedScheme;
+    final c = _selectedLoanType;
+    if (s == null || c == null) return const [];
+    return _purposeBySchemeCategory[s]?[c] ?? const [];
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _amountController.dispose();
+    _loanIdController.dispose();
+    super.dispose();
+  }
+
   Future<void> _pickDocument() async {
     try {
       final picker = ImagePicker();
-      // Using ImagePicker for simplicity. For PDFs, use 'file_picker' package.
       final XFile? image = await picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
         setState(() => _selectedDoc = File(image.path));
@@ -58,50 +162,69 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
 
     setState(() => _isLoading = true);
 
-    // Gather Data
-    final data = {
-      'officer_id': widget.officerId,
-      'name': _nameController.text.trim(),
-      'phone': _phoneController.text.trim(),
-      'amount': _amountController.text.trim(),
-      'loan_id': _loanIdController.text.trim(),
-      'scheme': _selectedScheme ?? "",
-      'loan_type': _selectedLoanType ?? "",
-    };
+    final officerId = widget.officerId;
+
+    final name = _nameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final amount = _amountController.text.trim();
+    final loanId = _loanIdController.text.trim();
+    final scheme = _selectedScheme ?? "";
+    final cat = _selectedLoanType ?? "";
+    final pur = _selectedPurpose ?? "";
+    final loanTypeFinal = pur.isEmpty ? cat : '$cat - $pur';
     final docPath = _selectedDoc?.path;
 
     try {
-      // Check Offline Status
       bool isOnline = await SyncService.realInternetCheck();
 
       if (!isOnline) {
-        await _saveOffline(widget.officerId, data, docPath);
+        await _saveOffline(officerId, name, phone, amount, loanId, scheme, loanTypeFinal, docPath);
         return;
       }
 
-      final bankService = BankService();
-      final success = await bankService.createBeneficiary(data, docPath: docPath);
+      var request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}bank/beneficiary'));
 
-      if (success) {
+      request.fields['officer_id'] = officerId;
+      request.fields['name'] = name;
+      request.fields['phone'] = phone;
+      request.fields['amount'] = amount;
+      request.fields['loan_id'] = loanId;
+      request.fields['scheme'] = scheme;
+      request.fields['loan_type'] = loanTypeFinal;
+
+      if (docPath != null) {
+        request.files.add(await http.MultipartFile.fromPath('loan_document', docPath));
+      }
+
+      var response = await request.send();
+      final respStr = await response.stream.bytesToString();
+
+      if (response.statusCode == 201) {
         if (mounted) _showSuccessDialog(isOffline: false);
       } else {
-        throw Exception("Server returned an error");
+        throw Exception("Server Error: ${response.statusCode} - $respStr");
       }
     } catch (e) {
       debugPrint("API Error, saving offline: $e");
-      // If network call fails, save offline
-      await _saveOffline(widget.officerId, data, docPath);
+      await _saveOffline(officerId, name, phone, amount, loanId, scheme, loanTypeFinal, docPath);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _saveOffline(
-      String officerId, Map<String, String> data, String? docPath) async {
+      String officerId,
+      String name,
+      String phone,
+      String amount,
+      String loanId,
+      String scheme,
+      String loanTypeFinal,
+      String? docPath,
+      ) async {
     try {
       String? encryptedDocPath;
 
-      // Encrypt file before saving to DB
       if (docPath != null) {
         final originalFile = File(docPath);
         if (await originalFile.exists()) {
@@ -112,22 +235,20 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
 
       await DatabaseHelper.instance.insertPendingBeneficiary(
         officerId: officerId,
-        name: data['name']!,
-        phone: data['phone']!,
-        amount: data['amount']!,
-        loanId: data['loan_id']!,
-        scheme: data['scheme']!,
-        loanType: data['loan_type']!,
-        docPath: encryptedDocPath, // Save encrypted path
+        name: name,
+        phone: phone,
+        amount: amount,
+        loanId: loanId,
+        scheme: scheme,
+        loanType: loanTypeFinal,
+        docPath: encryptedDocPath,
       );
 
       if (mounted) _showSuccessDialog(isOffline: true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text("Error saving offline: $e"),
-              backgroundColor: Colors.red),
+          SnackBar(content: Text("Error saving offline: $e"), backgroundColor: Colors.red),
         );
       }
     }
@@ -148,13 +269,16 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                  isOffline ? Icons.cloud_queue : Icons.check_circle,
-                  color: isOffline ? Colors.orange : Colors.green,
-                  size: 50),
+                isOffline ? Icons.cloud_queue : Icons.check_circle,
+                color: isOffline ? Colors.orange : Colors.green,
+                size: 50,
+              ),
             ),
             const SizedBox(height: 16),
-            Text(isOffline ? "Saved Offline" : "Beneficiary Added",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+            Text(
+              isOffline ? "Saved Offline" : "Beneficiary Added",
+              style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         content: Text(
@@ -189,7 +313,10 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        title: Text("Create Beneficiary", style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w600)),
+        title: Text(
+          "Create Beneficiary",
+          style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w600),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
@@ -245,16 +372,33 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                   label: "Government Scheme",
                   value: _selectedScheme,
                   items: _schemes,
-                  onChanged: (v) => setState(() => _selectedScheme = v),
+                  onChanged: (v) => setState(() {
+                    _selectedScheme = v;
+                    _selectedLoanType = null;
+                    _selectedPurpose = null;
+                  }),
                   icon: Icons.account_balance_rounded,
                 ),
                 const SizedBox(height: 16),
                 _buildDropdown(
                   label: "Loan Category",
                   value: _selectedLoanType,
-                  items: _loanTypes,
-                  onChanged: (v) => setState(() => _selectedLoanType = v),
+                  items: _currentLoanTypes,
+                  enabled: _selectedScheme != null,
+                  onChanged: (v) => setState(() {
+                    _selectedLoanType = v;
+                    _selectedPurpose = null;
+                  }),
                   icon: Icons.category_rounded,
+                ),
+                const SizedBox(height: 16),
+                _buildDropdown(
+                  label: "Loan Purpose",
+                  value: _selectedPurpose,
+                  items: _currentPurposes,
+                  enabled: _selectedLoanType != null,
+                  onChanged: (v) => setState(() => _selectedPurpose = v),
+                  icon: Icons.task_alt_rounded,
                 ),
               ]),
               const SizedBox(height: 24),
@@ -268,20 +412,20 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                   onPressed: _isLoading ? null : _submitForm,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF138808),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     elevation: 4,
                     shadowColor: const Color(0xFF138808).withOpacity(0.4),
                   ),
                   child: _isLoading
                       ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2))
-                      : Text("Create & Send SMS",
-                          style: GoogleFonts.poppins(
-                              fontSize: 16, fontWeight: FontWeight.w600)),
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                      : Text(
+                    "Create & Send SMS",
+                    style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -298,10 +442,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       child: Text(
         title,
         style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[600],
-            letterSpacing: 0.5),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey[600],
+          letterSpacing: 0.5,
+        ),
       ),
     );
   }
@@ -314,9 +459,10 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4)),
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
         border: Border.all(color: Colors.grey.shade200),
       ),
@@ -340,17 +486,18 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.inter(fontSize: 14, color: Colors.grey[500]),
-        prefixIcon: Icon(icon, color: const Color(0xFF435E91), size: 22),
+        prefixIcon: Icon(icon, color: _accent, size: 22),
         filled: true,
         fillColor: const Color(0xFFF9FAFB),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade200)),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
         focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFFF9933), width: 1.5)),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _accent, width: 1.5),
+        ),
       ),
     );
   }
@@ -359,27 +506,47 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     required String label,
     required String? value,
     required List<String> items,
-    required Function(String?) onChanged,
+    required ValueChanged<String?>? onChanged,
     required IconData icon,
+    bool enabled = true,
   }) {
     return DropdownButtonFormField<String>(
       value: value,
+      isExpanded: true,
+      menuMaxHeight: 320,
       items: items
-          .map((e) => DropdownMenuItem(value: e, child: Text(e, style: GoogleFonts.inter())))
+          .map((e) => DropdownMenuItem(
+        value: e,
+        child: Text(
+          e,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+          style: GoogleFonts.inter(),
+        ),
+      ))
           .toList(),
-      onChanged: onChanged,
-      validator: (v) => v == null ? "Required" : null,
+      onChanged: enabled ? onChanged : null,
+      validator: (v) => (enabled && v == null) ? "Required" : null,
+      icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.inter(fontSize: 14, color: Colors.grey[500]),
-        prefixIcon: Icon(icon, color: const Color(0xFF435E91), size: 22),
+        prefixIcon: Icon(icon, color: _accent, size: 22),
         filled: true,
         fillColor: const Color(0xFFF9FAFB),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade200)),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _accent, width: 1.5),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
       ),
     );
   }
@@ -395,22 +562,21 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: _selectedDoc != null ? Colors.green : Colors.grey.shade300,
-              style: BorderStyle.solid),
+            color: _selectedDoc != null ? Colors.green : Colors.grey.shade300,
+            style: BorderStyle.solid,
+          ),
         ),
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _selectedDoc != null
-                    ? Colors.green.withOpacity(0.1)
-                    : Colors.blue.withOpacity(0.1),
+                color: _selectedDoc != null ? Colors.green.withOpacity(0.1) : _accent.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 _selectedDoc != null ? Icons.check : Icons.upload_file_rounded,
-                color: _selectedDoc != null ? Colors.green : const Color(0xFF435E91),
+                color: _selectedDoc != null ? Colors.green : _accent,
                 size: 28,
               ),
             ),
@@ -421,11 +587,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              _selectedDoc != null
-                  ? _selectedDoc!.path.split('/').last
-                  : "PDF or Image (Max 5MB)",
+              _selectedDoc != null ? _selectedDoc!.path.split('/').last : "PDF or Image (Max 5MB)",
               style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500]),
               textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ],
         ),

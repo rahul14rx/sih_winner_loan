@@ -2,9 +2,11 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api.dart';
+import 'loan_detail_page.dart';
 
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key});
+  final String officerId;
+  const HistoryPage({super.key, required this.officerId});
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
@@ -15,10 +17,12 @@ class _LoanRow {
   final String applicantName;
   final double amount;
   final String loanType;
-  final String status; // verified / rejected / not verified
+  final String status;
   final String dateApplied;
   final String userId;
-  String scheme; // NSFDK / NSFDC / NSFDFC
+
+  String scheme;
+  String loanPurpose;
 
   _LoanRow({
     required this.loanId,
@@ -29,6 +33,7 @@ class _LoanRow {
     required this.dateApplied,
     required this.userId,
     this.scheme = "",
+    this.loanPurpose = "",
   });
 }
 
@@ -37,12 +42,12 @@ class _HistoryPageState extends State<HistoryPage> {
   bool _loading = true;
 
   final Set<String> _selectedSchemes = {};
-  bool _showAccepted = true; // verified
-  bool _showRejected = true; // rejected
+  bool _showAccepted = true;
+  bool _showRejected = true;
 
   List<_LoanRow> _all = [];
 
-  static const List<String> _schemeOptions = ["NBCFDC", "NSFDC", "NSKFDC"];
+  static const List<String> _schemeOptions = ["NSKFDC", "NBCFDC", "NSFDC"];
 
   @override
   void initState() {
@@ -61,7 +66,8 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<List<_LoanRow>> _fetchList(String status) async {
-    final res = await getJson("bank/loans?status=$status");
+    final oid = Uri.encodeComponent(widget.officerId.trim());
+    final res = await getJson("bank/loans?officer_id=$oid&status=$status");
     final List items = (res["data"] ?? []) as List;
 
     return items.map((e) {
@@ -73,19 +79,28 @@ class _HistoryPageState extends State<HistoryPage> {
         status: (e["status"] ?? status).toString(),
         dateApplied: (e["date_applied"] ?? "N/A").toString(),
         userId: (e["user_id"] ?? "").toString(),
+        scheme: (e["scheme"] ?? "").toString(),
+        loanPurpose: (e["loan_purpose"] ?? e["loanPurpose"] ?? e["purpose"] ?? "").toString(),
       );
     }).toList();
   }
 
-  Future<void> _attachSchemesInBatches(List<_LoanRow> loans) async {
+  Future<void> _attachSchemesAndPurposeInBatches(List<_LoanRow> loans) async {
     const batchSize = 8;
     for (int i = 0; i < loans.length; i += batchSize) {
       final chunk = loans.sublist(i, min(i + batchSize, loans.length));
       await Future.wait(chunk.map((l) async {
         try {
           final d = await getJson("bank/loan/${l.loanId}");
+
           final s = (d["scheme"] ?? "").toString().trim();
           if (s.isNotEmpty) l.scheme = s;
+
+          final p1 = (d["loan_purpose"] ?? "").toString().trim();
+          final p2 = (d["loanPurpose"] ?? "").toString().trim();
+          final p3 = (d["purpose"] ?? "").toString().trim();
+          final lp = p1.isNotEmpty ? p1 : (p2.isNotEmpty ? p2 : p3);
+          if (lp.isNotEmpty) l.loanPurpose = lp;
         } catch (_) {}
       }));
       if (!mounted) return;
@@ -103,7 +118,8 @@ class _HistoryPageState extends State<HistoryPage> {
       _all = <_LoanRow>[...results[0], ...results[1]];
       if (!mounted) return;
       setState(() => _loading = false);
-      await _attachSchemesInBatches(_all);
+
+      await _attachSchemesAndPurposeInBatches(_all);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -135,76 +151,13 @@ class _HistoryPageState extends State<HistoryPage> {
         l.applicantName,
         l.loanId,
         l.loanType,
+        l.loanPurpose,
         l.scheme,
         l.status,
       ].join(" ").toLowerCase();
 
       return hay.contains(query);
     }).toList();
-  }
-
-  void _showLoanDetailsDialog(_LoanRow loan) {
-    Widget buildDetailRow(String label, String value) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6.0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label,
-                style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                value,
-                textAlign: TextAlign.end,
-                style: GoogleFonts.inter(
-                  color: Colors.black87,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Loan Details',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                buildDetailRow('Loan ID', loan.loanId),
-                buildDetailRow('Applicant Name', loan.applicantName),
-                buildDetailRow('Amount', '₹${loan.amount.toStringAsFixed(0)}'),
-                buildDetailRow('Loan Type', loan.loanType),
-                buildDetailRow('Status', loan.status),
-                buildDetailRow('Date Applied', loan.dateApplied),
-                buildDetailRow('Scheme', loan.scheme.isNotEmpty ? loan.scheme : 'N/A'),
-                buildDetailRow('User ID', loan.userId),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Close',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
   }
 
   void _openLoanFilter() {
@@ -329,7 +282,7 @@ class _HistoryPageState extends State<HistoryPage> {
   }) {
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: onTap, // toggle
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
@@ -340,7 +293,7 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
@@ -357,15 +310,16 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  final Set<String> _statusPick = {"verified", "rejected"}; // default = show all
-
   Widget _loanCard(_LoanRow l) {
     final isVerified = l.status.toLowerCase() == "verified";
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () {
-        _showLoanDetailsDialog(l);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => LoanDetailPage(loanId: l.loanId)),
+        ).then((_) => _load());
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
@@ -375,7 +329,7 @@ class _HistoryPageState extends State<HistoryPage> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 14,
               offset: const Offset(0, 6),
             )
@@ -388,11 +342,10 @@ class _HistoryPageState extends State<HistoryPage> {
               height: 44,
               width: 44,
               decoration: BoxDecoration(
-                color: const Color(0xFFFF9933).withOpacity(0.12),
+                color: const Color(0xFFFF9933).withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.receipt_long_rounded,
-                  color: Color(0xFFFF9933)),
+              child: const Icon(Icons.receipt_long_rounded, color: Color(0xFFFF9933)),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -401,24 +354,21 @@ class _HistoryPageState extends State<HistoryPage> {
                 children: [
                   Text(
                     l.applicantName,
-                    style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w700, fontSize: 15),
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 15),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
                     "ID: ${l.loanId}  •  ₹${l.amount.toStringAsFixed(0)}  •  ${l.loanType}",
-                    style:
-                        GoogleFonts.inter(fontSize: 12.5, color: Colors.grey[700]),
+                    style: GoogleFonts.inter(fontSize: 12.5, color: Colors.grey[700]),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     "Applied: ${l.dateApplied}${l.scheme.isNotEmpty ? "  •  ${l.scheme}" : ""}",
-                    style:
-                        GoogleFonts.inter(fontSize: 12.5, color: Colors.grey[700]),
+                    style: GoogleFonts.inter(fontSize: 12.5, color: Colors.grey[700]),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -429,11 +379,10 @@ class _HistoryPageState extends State<HistoryPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: (isVerified ? Colors.green : Colors.red).withOpacity(0.12),
+                color: (isVerified ? Colors.green : Colors.red).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                  color:
-                      (isVerified ? Colors.green : Colors.red).withOpacity(0.25),
+                  color: (isVerified ? Colors.green : Colors.red).withValues(alpha: 0.25),
                 ),
               ),
               child: Text(
@@ -459,8 +408,7 @@ class _HistoryPageState extends State<HistoryPage> {
       appBar: AppBar(
         title: Text(
           "History",
-          style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w700, color: Colors.black87),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.black87),
         ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
@@ -486,7 +434,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 border: Border.all(color: Colors.grey.shade200),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
+                    color: Colors.black.withValues(alpha: 0.03),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   )
@@ -530,7 +478,7 @@ class _HistoryPageState extends State<HistoryPage> {
                         border: Border.all(color: Colors.grey.shade300),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
+                            color: Colors.black.withValues(alpha: 0.03),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           )
@@ -572,16 +520,16 @@ class _HistoryPageState extends State<HistoryPage> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : list.isEmpty
-                      ? Center(
-                          child: Text(
-                            "No results found",
-                            style: GoogleFonts.inter(color: Colors.grey[600], fontWeight: FontWeight.w600),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: list.length,
-                          itemBuilder: (_, i) => _loanCard(list[i]),
-                        ),
+                  ? Center(
+                child: Text(
+                  "No results found",
+                  style: GoogleFonts.inter(color: Colors.grey[600], fontWeight: FontWeight.w600),
+                ),
+              )
+                  : ListView.builder(
+                itemCount: list.length,
+                itemBuilder: (_, i) => _loanCard(list[i]),
+              ),
             ),
           ],
         ),

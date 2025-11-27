@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../services/api.dart';
+import 'loan_detail_page.dart';
 
 class ReportsPage extends StatefulWidget {
-  const ReportsPage({super.key});
+  final String officerId;
+  const ReportsPage({super.key, required this.officerId});
 
   @override
   State<ReportsPage> createState() => _ReportsPageState();
 }
+
 
 class _LoanRow {
   final String loanId;
@@ -142,7 +145,8 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Future<List<_LoanRow>> _fetchList(String status) async {
-    final res = await getJson("bank/loans?status=$status");
+    final res = await getJson("bank/loans?officer_id=${widget.officerId}&status=$status");
+
     final List items = (res["data"] ?? []) as List;
 
     return items.map((e) {
@@ -719,58 +723,68 @@ class _ReportsPageState extends State<ReportsPage> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: _glassCard(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Container(
-              height: 44,
-              width: 44,
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () {
+          if (l.loanId.trim().isEmpty) return;
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => LoanDetailPage(loanId: l.loanId)),
+          );
+        },
+        child: _glassCard(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: Colors.black87, size: 22),
               ),
-              child: Icon(icon, color: Colors.black87, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    l.applicantName.isEmpty ? "Beneficiary" : l.applicantName,
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 14.5),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    "Loan: ${l.loanId}  •  ₹${l.amount.toStringAsFixed(0)}  •  ${l.scheme.isNotEmpty ? l.scheme : l.loanType}",
-                    style: GoogleFonts.inter(fontSize: 12.2, color: Colors.black54, fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    "Applied: ${l.dateApplied}",
-                    style: GoogleFonts.inter(fontSize: 12.2, color: Colors.black54, fontWeight: FontWeight.w600),
-                  ),
-                ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l.applicantName.isEmpty ? "Beneficiary" : l.applicantName,
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 14.5),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      "Loan: ${l.loanId}  •  ₹${l.amount.toStringAsFixed(0)}  •  ${l.scheme.isNotEmpty ? l.scheme : l.loanType}",
+                      style: GoogleFonts.inter(fontSize: 12.2, color: Colors.black54, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Applied: ${l.dateApplied}",
+                      style: GoogleFonts.inter(fontSize: 12.2, color: Colors.black54, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: chipBg,
-                borderRadius: BorderRadius.circular(999),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: chipBg,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  label,
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: Colors.white),
+                ),
               ),
-              child: Text(
-                label,
-                style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: Colors.white),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
