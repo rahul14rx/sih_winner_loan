@@ -201,7 +201,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     final index = processes.indexWhere((p) => p['id'] == processId);
 
     if (index != -1) {
-      processes[index]['process_status'] = status;
+      processes[index]['status'] = status;
       setState(() {
         _details!['process'] = processes;
       });
@@ -308,7 +308,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
           children: [
             _buildDetailRow("Applicant", (_details!['applicant_name'] ?? 'N/A').toString(), isTitle: true),
             const SizedBox(height: 16),
-
             _buildDetailRow("Loan ID", (_details!['loan_id'] ?? 'N/A').toString()),
             _buildDetailRow("Amount", "₹${_details!['amount']?.toString() ?? '0'}"),
             _buildDetailRow("Scheme", (_details!['scheme'] ?? 'N/A').toString()),
@@ -371,10 +370,18 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
   }
 
   Widget _buildProcessCard(Map<String, dynamic> p) {
-    final fileId = p['data'];
-    final status = (p['process_status'] ?? '').toString();
-    bool isVerified = status == 'verified';
-    bool isRejected = status == 'rejected';
+    final fileId = p['file_id'];
+    final mediaUrl = (p['media_url'] ?? '').toString().trim();
+
+    final statusRaw = (p['status'] ?? p['process_status'] ?? '').toString().toLowerCase().trim();
+    bool isVerified = statusRaw == 'verified';
+    bool isRejected = statusRaw == 'rejected';
+
+    final util = p['utilization_amount'];
+
+    final imageUrl = mediaUrl.isNotEmpty
+        ? mediaUrl
+        : (fileId != null ? "${kBaseUrl}media/$fileId" : "");
 
     return Card(
       elevation: 2,
@@ -384,11 +391,11 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (fileId != null && fileId.toString().length > 5)
+          if (imageUrl.isNotEmpty)
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: Image.network(
-                "${kBaseUrl}file/$fileId",
+                imageUrl,
                 height: 220,
                 width: double.infinity,
                 fit: BoxFit.cover,
@@ -421,6 +428,14 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                   (p['what_to_do'] ?? 'N/A').toString(),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
                 ),
+                if (util != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(
+                      "Utilization amount: ₹$util",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 if (p['score'] != null && (p['score'] is num) && (p['score'] as num) > 0)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),

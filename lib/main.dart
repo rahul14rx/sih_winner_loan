@@ -6,6 +6,7 @@ import 'package:loan2/services/sync_service.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SyncService.startListener();
+
   runApp(const NyaySahayakApp());
 }
 
@@ -22,10 +23,18 @@ class NyaySahayakApp extends StatelessWidget {
       routes: {
         '/loan-process': (context) {
           final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+
           final userId = args?['userId'] as String? ?? '';
-          return LoanProcessPage(userId: userId);
+          final loanId = args?['loanId'] as String? ?? '';
+
+          if (loanId.isEmpty) {
+            return const Scaffold(body: Center(child: Text("loanId missing")));
+          }
+          return LoanProcessPage(loanId: loanId, userId: userId);
         },
       },
+
+
     );
   }
 

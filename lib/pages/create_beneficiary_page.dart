@@ -30,12 +30,17 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
   String? _selectedScheme;
   String? _selectedLoanType;
   String? _selectedPurpose;
+  String? _selectedFloors;
   File? _selectedDoc;
 
   static const _accent = Color(0xFFFF9933);
 
   final List<String> _schemes = ['NBCFDC', 'NSFDC', 'NSKFDC'];
-
+  final List<String> _floors = List.generate(10, (i) => '${i + 1}');
+  bool get _showFloorsDropdown {
+    final p = (_selectedPurpose ?? '').toLowerCase();
+    return p.contains('construction'); // covers "Shop construction / purchase", "Construction of shops / kiosks", etc.
+  }
   final Map<String, List<String>> _loanTypesByScheme = {
     'NBCFDC': [
       'General Term Loan',
@@ -195,6 +200,9 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       if (docPath != null) {
         request.files.add(await http.MultipartFile.fromPath('loan_document', docPath));
       }
+      if (_showFloorsDropdown && _selectedFloors != null) {
+        request.fields['floors'] = _selectedFloors!;
+      }
 
       var response = await request.send();
       final respStr = await response.stream.bytesToString();
@@ -210,6 +218,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+
   }
 
   Future<void> _saveOffline(
@@ -376,9 +385,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                     _selectedScheme = v;
                     _selectedLoanType = null;
                     _selectedPurpose = null;
+                    _selectedFloors = null ;
                   }),
                   icon: Icons.account_balance_rounded,
                 ),
+
                 const SizedBox(height: 16),
                 _buildDropdown(
                   label: "Loan Category",
@@ -399,8 +410,19 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                   enabled: _selectedLoanType != null,
                   onChanged: (v) => setState(() => _selectedPurpose = v),
                   icon: Icons.task_alt_rounded,
-                ),
+                ),if (_showFloorsDropdown) ...[
+                  const SizedBox(height: 16),
+                  _buildDropdown(
+                    label: "Number of Floors",
+                    value: _selectedFloors,
+                    items: _floors,
+                    onChanged: (v) => setState(() => _selectedFloors = v),
+                    icon: Icons.layers_rounded,
+                  ),
+                ]
+
               ]),
+
               const SizedBox(height: 24),
               _buildSectionHeader("Documents"),
               _buildUploadCard(),
@@ -416,6 +438,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                     elevation: 4,
                     shadowColor: const Color(0xFF138808).withOpacity(0.4),
                   ),
+
                   child: _isLoading
                       ? const SizedBox(
                     width: 24,
@@ -479,6 +502,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     String? Function(String?)? validator,
   }) {
     return TextFormField(
+
       controller: controller,
       keyboardType: inputType,
       inputFormatters: formatters,
