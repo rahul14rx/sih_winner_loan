@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_jailbreak_detection/flutter_jailbreak_detection.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/pages/bank_dashboard_page.dart';
 import 'package:loan2/pages/beneficiary_dashboard.dart';
@@ -14,6 +17,58 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   String _selectedLang = 'en';
+
+  @override
+  void initState() {
+    super.initState();
+    // Use a post-frame callback to safely show a dialog
+    // after the first frame has been built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDeveloperMode();
+    });
+  }
+
+  Future<void> _checkDeveloperMode() async {
+    bool developerMode;
+    try {
+      developerMode = await FlutterJailbreakDetection.developerMode;
+    } on PlatformException {
+      developerMode = true; // Assume developer mode in case of error
+    }
+
+    if (developerMode && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false, // User must interact with the dialog
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Developer Mode Enabled'),
+            content: const SingleChildScrollView(
+              child: ListBody(
+                children: <Widget>[
+                  Text('This app cannot be used with Developer Mode enabled.'),
+                  SizedBox(height: 16),
+                  Text('To turn it off:'),
+                  Text('1. Go to your device Settings.'),
+                  Text('2. Find "Developer options".'),
+                  Text('3. Toggle the switch at the top to OFF.'),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Exit App'),
+                onPressed: () {
+                  exit(0); // Closes the app
+                },
+              ),
+            ],
+          );
+        },
+      );
+    }
+  }
+
 
   final Map<String, Map<String, String>> _localizedStrings = {
     'en': {
