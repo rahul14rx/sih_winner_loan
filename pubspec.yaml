@@ -8,9 +8,14 @@ environment:
   sdk: ^3.10.0
 
 dependencies:
-
+  exif: ^3.3.0
+  tflite_flutter: ^0.12.1
+  image: ^4.2.0
   flutter:
     sdk: flutter
+
+
+
 
   cupertino_icons: ^1.0.8
   http: ^1.2.1
@@ -40,3 +45,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/models/blur_detector_v2.tflite
+    - assets/models/screen_detector_efficientb0.tflite
