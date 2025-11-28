@@ -23,9 +23,9 @@ class _LoginPageState extends State<LoginPage> {
     super.initState();
     // Use a post-frame callback to safely show a dialog
     // after the first frame has been built.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkDeveloperMode();
-    });
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   _checkDeveloperMode();
+    // });
   }
 
   Future<void> _checkDeveloperMode() async {

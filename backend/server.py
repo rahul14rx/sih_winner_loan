@@ -42,6 +42,9 @@ def _process_to_api(p):
         "filename": p.get("filename"),
         "utilization_amount": p.get("utilization_amount"),
         "is_required": bool(p.get("is_required", True)),
+        "latitude": p.get("latitude"),
+        "longitude": p.get("longitude"),
+        "location_confidence": p.get("location_confidence"),
     }
 
     if fid:
@@ -142,10 +145,14 @@ def loan_page():
 @app.route("/upload", methods=["POST"])
 def upload_file():
     try:
+        # Explicitly get all data from the form
         process_id = request.form.get("process_id")
         loan_id = request.form.get("loan_id")
         file = request.files.get("file")
         utilization_amount = request.form.get("utilization_amount", "").strip()
+        latitude = request.form.get("latitude")
+        longitude = request.form.get("longitude")
+        location_confidence = request.form.get("location_confidence")
 
         if not (loan_id and process_id and file):
             return jsonify({"error": "loan_id, process_id & file required"}), 400
@@ -155,12 +162,17 @@ def upload_file():
             return jsonify({"error": "Loan not found"}), 404
 
         user_id = doc.get("user_id")
+        
+        # Pass them as explicit arguments to the service
         ok = db_service.update_process_media(
             user_id=user_id,
             loan_id=loan_id,
             process_id=process_id,
             file_storage=file,
-            utilization_amount=utilization_amount
+            utilization_amount=utilization_amount,
+            latitude=latitude,
+            longitude=longitude,
+            location_confidence=location_confidence
         )
 
         if ok:
@@ -231,7 +243,6 @@ def create_new():
     data = request.form.to_dict()
     print(data)
 
-    # 1. ADDED the new fields to the list of required fields.
     required = [
         "name", "phone", "amount", "loan_type", "scheme", "loan_id", "officer_id",
         "beneficiary_address", "asset_purchased"
@@ -240,13 +251,10 @@ def create_new():
         missing = [k for k in required if k not in data or not str(data[k]).strip()]
         return jsonify({"error": "Missing required fields", "missing": missing}), 400
 
-    # 2. CHANGED the file key from 'loan_document' to 'loan_agreement'.
     loan_agreement_file = request.files.get("loan_agreement")
     if not loan_agreement_file:
         return jsonify({"error": "Missing 'loan_agreement' file"}), 400
 
-    # 3. UPDATED the service call to pass the new file.
-    #    (Make sure your db_service.create_beneficiary function can handle these new fields)
     ok, msg = db_service.create_beneficiary(data, loan_agreement=loan_agreement_file)
     
     if ok:

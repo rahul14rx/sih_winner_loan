@@ -217,13 +217,13 @@ def _build_default_processes(data):
     if not _is_construction(lt, sc):
         return [
             {"id": "P1", "processid": 1, "what_to_do": "Upload Asset Front View", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True},
+             "data_type": "image", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True, "latitude": None, "longitude": None, "location_confidence": None},
             {"id": "P2", "processid": 2, "what_to_do": "Upload Asset Side View", "data": None,
-             "data_type": "movement", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True},
+             "data_type": "movement", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True, "latitude": None, "longitude": None, "location_confidence": None},
             {"id": "P3", "processid": 3, "what_to_do": "Upload Invoice Bill", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True},
+             "data_type": "image", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True, "latitude": None, "longitude": None, "location_confidence": None},
             {"id": "P4", "processid": 4, "what_to_do": "Record 360 Video", "data": None,
-             "data_type": "video", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True},
+             "data_type": "video", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True, "latitude": None, "longitude": None, "location_confidence": None},
         ]
 
     stages = data.get("stages") or data.get("shop_floors") or data.get("floors") or "4"
@@ -255,6 +255,9 @@ def _build_default_processes(data):
                 "process_status": "not verified",
                 "file_id": None,
                 "is_required": True,
+                "latitude": None, 
+                "longitude": None, 
+                "location_confidence": None,
             })
             pid += 1
     return out
@@ -262,34 +265,13 @@ def _build_default_processes(data):
 
 def create_beneficiary(data, loan_agreement=None):
 
-    default_processes = [
-        {"id": "P1", "processid": 1, "what_to_do": "Upload Asset Front View",
-         "data": None, "data_type": "image", "score": 0,
-         "process_status": "not verified", "file_id": None,
-         "latitude": None, "longitude": None},
-
-        {"id": "P2", "processid": 2, "what_to_do": "Upload Asset Side View",
-         "data": None, "data_type": "movement", "score": 0,
-         "process_status": "not verified", "file_id": None,
-         "latitude": None, "longitude": None},
-
-        {"id": "P3", "processid": 3, "what_to_do": "Upload Invoice Bill",
-         "data": None, "data_type": "image", "score": 0,
-         "process_status": "not verified", "file_id": None,
-         "latitude": None, "longitude": None},
-
-        {"id": "P4", "processid": 4, "what_to_do": "Record 360 Video",
-         "data": None, "data_type": "video", "score": 0,
-         "process_status": "not verified", "file_id": None,
-         "latitude": None, "longitude": None},
-    ]
+    processes = _build_default_processes(data)
 
     today = datetime.date.today().strftime("%Y-%m-%d")
 
-    loan_agreement_file_id = None # Renamed for clarity
-    if loan_agreement: # Changed here
+    loan_agreement_file_id = None
+    if loan_agreement:
         try:
-            # Changed here
             loan_agreement_file_id = str(fs.put(loan_agreement.read(), filename=loan_agreement.filename))
         except Exception as e:
             print(f"Error saving file to GridFS: {e}")
@@ -305,10 +287,9 @@ def create_beneficiary(data, loan_agreement=None):
         "scheme": data.get("scheme"),
         "date_applied": today,
         "status": "not verified",
-        "process": default_processes,
+        "process": processes,
         "loan_category": data.get("loan_category"),
         "loan_purpose": data.get("loan_purpose"),
-        # Changed the key name to be consistent
         "loan_agreement_file_id": loan_agreement_file_id,
         "beneficiary_address": data.get("beneficiary_address"),
         "asset_purchased": data.get("asset_purchased"),
@@ -328,7 +309,7 @@ def mock_send_sms(phone, name, loan_id):
     return True
 
 
-def update_process_media(user_id, loan_id, process_id, file_storage, utilization_amount=""):
+def update_process_media(user_id, loan_id, process_id, file_storage, utilization_amount=None, latitude=None, longitude=None, location_confidence=None):
     try:
         file_bytes = file_storage.read()
         gid = fs.put(file_bytes, filename=file_storage.filename)
@@ -336,60 +317,43 @@ def update_process_media(user_id, loan_id, process_id, file_storage, utilization
 
         now = datetime.datetime.utcnow().isoformat()
 
-        extra = {}
-        if utilization_amount:
-            try:
-                extra["process.$.utilization_amount"] = float(utilization_amount)
-            except Exception:
-                extra["process.$.utilization_amount"] = utilization_amount
-
-        q1 = {"loan_id": str(loan_id), "user_id": str(user_id), "process.id": str(process_id)}
-        u = {
-            "$set": {
-                "process.$.file_id": gid_str,
-                "process.$.filename": file_storage.filename,
-                "process.$.uploaded_at": now,
-                "process.$.data": None,
-                "process.$.process_status": "pending_review",
-                **extra
-            }
+        set_payload = {
+            "process.$.file_id": gid_str,
+            "process.$.filename": file_storage.filename,
+            "process.$.process_status": "pending_review",
+            "process.$.updated_at": now,
         }
 
-        r = collection.update_one(q1, u)
+        if utilization_amount:
+            try:
+                set_payload["process.$.utilization_amount"] = float(utilization_amount)
+            except (ValueError, TypeError):
+                set_payload["process.$.utilization_amount"] = utilization_amount
 
-        if r.matched_count == 0 and str(process_id).isdigit():
-            q2 = {"loan_id": str(loan_id), "user_id": str(user_id), "process.processid": int(process_id)}
-            r = collection.update_one(q2, u)
+        if latitude is not None and longitude is not None:
+            try:
+                set_payload["process.$.latitude"] = float(latitude)
+                set_payload["process.$.longitude"] = float(longitude)
+                if location_confidence is not None:
+                    set_payload["process.$.location_confidence"] = float(location_confidence)
+            except (ValueError, TypeError):
+                print(f"Warning: Could not convert geo data to float for loan {loan_id}. Saving as string.")
+                set_payload["process.$.latitude"] = latitude
+                set_payload["process.$.longitude"] = longitude
+                if location_confidence is not None:
+                    set_payload["process.$.location_confidence"] = location_confidence
 
-        return r.modified_count > 0
+        q1 = {"loan_id": str(loan_id), "user_id": str(user_id), "process.id": str(process_id)}
+        u = {"$set": set_payload}
+        
+        result = collection.update_one(q1, u)
 
-    except Exception:
+        if result.matched_count == 0 and str(process_id).isdigit():
+             q2 = {"loan_id": str(loan_id), "user_id": str(user_id), "process.processid": int(process_id)}
+             result = collection.update_one(q2, u)
+
+        return result.matched_count > 0
+
+    except Exception as e:
+        print(f"Error in update_process_media: {e}")
         return False
-
-
-def set_stage_utilization(loan_id, user_id, stage_no, amount):
-    try:
-        sn = int(str(stage_no))
-    except Exception:
-        return False, "invalid stage_no"
-
-    try:
-        amt = float(str(amount))
-    except Exception:
-        return False, "invalid amount"
-
-    q = {"loan_id": str(loan_id)}
-    if user_id:
-        q["user_id"] = str(user_id)
-
-    r = collection.update_one(q, {"$set": {f"stage_utilization.{sn}": amt}})
-    if r.matched_count == 0:
-        return False, "loan not found"
-    return True, "saved"
-
-
-def get_file(file_id):
-    try:
-        return fs.get(ObjectId(file_id))
-    except Exception:
-        return None

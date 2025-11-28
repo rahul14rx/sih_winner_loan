@@ -11,6 +11,10 @@ import 'package:loan2/ai/combined_ai_gate.dart';
 import 'package:exif/exif.dart';
 import 'package:loan2/pages/rear_camera_capture_page.dart';
 
+// NEW IMPORTS FOR LOCATION
+import 'package:geolocator/geolocator.dart';
+import 'package:loan2/services/location_security_service.dart';
+
 class VerificationStepPage extends StatefulWidget {
   final String loanId;
   final ProcessStep step;
@@ -34,6 +38,33 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
   bool _isUploading = false;
   bool _isCheckingAi = false;
   AiResult? _lastAi;
+
+  // NEW: Location Security Service instance
+  final LocationSecurityService _locationSecurity = LocationSecurityService();
+  String _locationStatus = "Initializing...";
+  
+  final TextEditingController _amountController = TextEditingController();
+
+  bool get _showAmountInput => widget.step.processId == 1;
+
+  @override
+  void initState() {
+    super.initState();
+    CombinedAiGate.instance.init();
+    // NEW: Start the location service
+    _locationSecurity.start().then((_) {
+      if (mounted) setState(() => _locationStatus = "Ready");
+    });
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    // NEW: Stop the location service
+    _locationSecurity.stop();
+    super.dispose();
+  }
+
   Widget _warnBox(String t) {
     return Container(
       width: double.infinity,
@@ -59,21 +90,6 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
         ],
       ),
     );
-  }
-  final TextEditingController _amountController = TextEditingController();
-
-  bool get _showAmountInput => widget.step.processId == 1;
-
-  @override
-  void initState() {
-    super.initState();
-    CombinedAiGate.instance.init();
-  }
-
-  @override
-  void dispose() {
-    _amountController.dispose();
-    super.dispose();
   }
 
   void _pickMedia() {
@@ -233,8 +249,17 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
     setState(() => _isUploading = true);
 
     int? dbId;
+    Position? position; // Will hold the GPS position
+    LocationSecurityResult? securityResult; // Will hold the security evaluation
 
     try {
+      // --- NEW: GET AND EVALUATE LOCATION --- 
+      setState(() => _locationStatus = "Getting secure location...");
+      position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+      securityResult = await _locationSecurity.evaluate(position);
+      setState(() => _locationStatus = "Location evaluated. Confidence: ${securityResult!.confidence.toStringAsFixed(1)}%");
+      // --- END NEW LOCATION --- 
+
       String finalPath = _mediaFile!.path;
 
       dbId = await DatabaseHelper.instance.insertImagePath(
@@ -267,34 +292,16 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
         }
         return;
       }
-      Widget _warnBox(String t) {
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF3CD),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFFFE69C)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: Color(0xFF856404)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  t,
-                  style: const TextStyle(color: Color(0xFF856404), fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
 
       var request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}upload'));
       request.fields['loan_id'] = widget.loanId;
       request.fields['process_id'] = widget.step.id;
       request.fields['user_id'] = widget.userId;
+
+      // NEW: ADD LOCATION DATA TO API REQUEST
+      request.fields['latitude'] = position.latitude.toString();
+      request.fields['longitude'] = position.longitude.toString();
+      request.fields['location_confidence'] = securityResult.confidence.toString();
 
       if (_showAmountInput) {
         request.fields['utilization_amount'] = _amountController.text;
@@ -355,6 +362,24 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
             Text("Please complete the step below to submit your utilization proof.",
                 style: TextStyle(color: Colors.grey[500], fontSize: 12)),
             const SizedBox(height: 24),
+
+             // NEW: Show location status
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.gps_fixed, color: Colors.blue[800], size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_locationStatus, style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.w500))),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
             Text(
               "Step ${widget.step.processId} · ${widget.step.whatToDo}",
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
@@ -365,27 +390,6 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
               style: TextStyle(color: Colors.grey[600], fontSize: 12),
             ),
             const SizedBox(height: 16),
-
-            // if (_lastAi != null) ...[
-            //   const SizedBox(height: 12),
-            //   Container(
-            //     width: double.infinity,
-            //     padding: const EdgeInsets.all(12),
-            //     decoration: BoxDecoration(
-            //       color: Colors.grey[100],
-            //       borderRadius: BorderRadius.circular(10),
-            //       border: Border.all(color: Colors.grey[300]!),
-            //     ),
-            //     child: Text(
-            //       "AI Debug:\n"
-            //           "verdict: ${_lastAi!.verdict}\n"
-            //           "blur: ${_lastAi!.blurScore.toStringAsFixed(4)}\n"
-            //           "screen: ${_lastAi!.screenScore.toStringAsFixed(4)}\n"
-            //           "${_lastAi!.message}",
-            //       style: const TextStyle(fontSize: 12),
-            //     ),
-            //   ),
-            // ],
 
             if (_showAmountInput) ...[
               const Text("Utilization amount (₹)", style: TextStyle(fontWeight: FontWeight.w600)),
