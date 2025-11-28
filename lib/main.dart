@@ -3,7 +3,7 @@ import 'package:loan2/pages/login_page.dart';
 import 'package:loan2/pages/loan_process_page.dart';
 import 'package:loan2/services/sync_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SyncService.startListener();
   runApp(const NyaySahayakApp());
