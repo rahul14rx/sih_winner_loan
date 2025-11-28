@@ -7,7 +7,7 @@ import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
   static const _dbName = 'loan_app.db';
-  static const _dbVersion = 6; // Incremented to 6 for officer actions
+  static const _dbVersion = 7; // Incremented to 7 for new beneficiary fields
   
   static const tableImages = 'images';
   static const tableBeneficiaries = 'pending_beneficiaries';
@@ -31,6 +31,9 @@ class DatabaseHelper {
   static const colScheme = 'scheme';
   static const colLoanType = 'loan_type';
   static const colDocPath = 'doc_path';
+  // NEW COLUMNS FOR DB VERSION 7
+  static const colAddress = 'address';
+  static const colAsset = 'asset';
 
   // columns for officer actions
   static const colActionType = 'action_type'; // 'verified' or 'rejected'
@@ -78,7 +81,9 @@ class DatabaseHelper {
         $colScheme TEXT,
         $colLoanType TEXT,
         $colDocPath TEXT,
-        $colCreatedAt INTEGER
+        $colCreatedAt INTEGER,
+        $colAddress TEXT, -- ADDED IN V7
+        $colAsset TEXT    -- ADDED IN V7
       )
     ''');
 
@@ -129,6 +134,11 @@ class DatabaseHelper {
           $colCreatedAt INTEGER
         )
       ''');
+    }
+    // UPGRADE FOR VERSION 7
+    if (oldVersion < 7) {
+        await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAddress TEXT;');
+        await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAsset TEXT;');
     }
   }
 
@@ -236,6 +246,8 @@ class DatabaseHelper {
     required String scheme,
     required String loanType,
     String? docPath,
+    String? address, // MADE OPTIONAL
+    String? asset,   // MADE OPTIONAL
   }) async {
     final db = await database;
     final row = {
@@ -247,6 +259,8 @@ class DatabaseHelper {
       colScheme: scheme,
       colLoanType: loanType,
       colDocPath: docPath,
+      colAddress: address, // NEW
+      colAsset: asset,     // NEW
       colCreatedAt: DateTime.now().millisecondsSinceEpoch,
     };
     return await db.insert(tableBeneficiaries, row);

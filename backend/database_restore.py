@@ -34,8 +34,8 @@ collection = db["sih"]
 # ---------------------------------------
 # 2. DELETE EXISTING DATA
 # ---------------------------------------
-collection.delete_many({})
-#
+# collection.delete_many({})
+
 # ---------------------------------------
 # 3. SAMPLE DATA WITH COMMON INSTRUCTIONS
 # ---------------------------------------
