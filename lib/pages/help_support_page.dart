@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:loan2/widgets/officer_nav_bar.dart';
 
 class HelpSupportPage extends StatelessWidget {
-  const HelpSupportPage({super.key});
+  final String officerId;
+  const HelpSupportPage({super.key, required this.officerId});
+
+  static const _accent = Color(0xFF1E5AA8);
+  static const double _headerRadius = 25;
 
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
@@ -30,22 +35,34 @@ class HelpSupportPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(
           'Help & Support',
-          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700),
         ),
-        backgroundColor: const Color(0xFFFF9933),
+        backgroundColor: _accent,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(_headerRadius)),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      bottomNavigationBar: OfficerNavBar(
+        officerId: officerId,
+        currentIndex: 5,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Section 1: Contact Support
             Text(
               'Officer Support',
-              style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF000080)),
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF000080),
+              ),
             ),
             const SizedBox(height: 12),
             Container(
@@ -53,7 +70,11 @@ class HelpSupportPage extends StatelessWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
                 ],
               ),
               child: Column(
@@ -79,58 +100,13 @@ class HelpSupportPage extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            // Section 2: Report Issue
-            Text(
-              'Report an Issue',
-              style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF000080)),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Facing issues with verification sync or beneficiary data? Log a ticket directly.',
-                    style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[600], height: 1.5),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Redirecting to internal ticketing system...')),
-                        );
-                      },
-                      icon: const Icon(Icons.bug_report_rounded, size: 20),
-                      label: Text('Raise Ticket', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Section 3: FAQs
             Text(
               'Officer FAQs',
-              style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF000080)),
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF000080),
+              ),
             ),
             const SizedBox(height: 12),
             _buildExpansionTile(
@@ -166,10 +142,7 @@ class HelpSupportPage extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       leading: Container(
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(icon, color: color, size: 24),
       ),
       title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15)),

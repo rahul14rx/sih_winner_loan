@@ -5,7 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 
 // Change this to your Flask host
-const String kBaseUrl = 'http://192.168.1.7:5000/';
+const String kBaseUrl = 'http://10.10.1.99:5000/';
 
 final Connectivity _connectivity = Connectivity();
 

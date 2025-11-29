@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../services/api.dart';
 import 'loan_detail_page.dart';
+import 'package:loan2/widgets/officer_nav_bar.dart';
 
 class ReportsPage extends StatefulWidget {
   final String officerId;
@@ -13,7 +14,6 @@ class ReportsPage extends StatefulWidget {
   @override
   State<ReportsPage> createState() => _ReportsPageState();
 }
-
 
 class _LoanRow {
   final String loanId;
@@ -39,7 +39,8 @@ enum _RangePick { today, week, month, all, custom }
 
 class _ReportsPageState extends State<ReportsPage> {
   static const _bg = Color(0xFFF6F7FB);
-  static const _accent = Color(0xFFFF9933);
+  static const _accent = Color(0xFF1E5AA8);
+  static const double _headerRadius = 25;
 
   bool _loading = true;
 
@@ -101,7 +102,6 @@ class _ReportsPageState extends State<ReportsPage> {
   bool _statusAllowed(String st) {
     final s = st.trim().toLowerCase();
 
-    // if none selected => show ALL (as per your requirement)
     if (!_showAccepted && !_showRejected && !_showPending) return true;
 
     if (_showAccepted && s == "verified") return true;
@@ -146,7 +146,6 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Future<List<_LoanRow>> _fetchList(String status) async {
     final res = await getJson("bank/loans?officer_id=${widget.officerId}&status=$status");
-
     final List items = (res["data"] ?? []) as List;
 
     return items.map((e) {
@@ -219,6 +218,9 @@ class _ReportsPageState extends State<ReportsPage> {
     }
   }
 
+  // =========================
+  // ONLY DATE PICKER CHANGED
+  // =========================
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
     final initial = _customRange ??
@@ -227,11 +229,17 @@ class _ReportsPageState extends State<ReportsPage> {
           end: now,
         );
 
-    final picked = await showDateRangePicker(
+    final picked = await showDialog<DateTimeRange>(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(now.year + 1),
-      initialDateRange: initial,
+      barrierColor: Colors.black.withOpacity(0.28),
+      builder: (dctx) {
+        return _FancyRangePickerDialog(
+          firstDate: DateTime(2020),
+          lastDate: DateTime(now.year + 1, 12, 31),
+          initialRange: initial,
+          accent: _accent,
+        );
+      },
     );
 
     if (picked == null) return;
@@ -364,23 +372,74 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  Widget _pillChip(String text, bool active, VoidCallback onTap) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(30),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: active ? Colors.black.withOpacity(0.08) : Colors.white.withOpacity(0.45),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: Colors.black.withOpacity(0.08)),
+  Widget _tintedGlassCard({
+    required Color tint,
+    required Widget child,
+    EdgeInsets padding = const EdgeInsets.all(16),
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                tint.withOpacity(0.34),
+                Colors.white.withOpacity(0.20),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.35)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              )
+            ],
+          ),
+          child: child,
         ),
-        child: Text(
-          text,
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w700,
-            fontSize: 12.5,
-            color: Colors.black87,
+      ),
+    );
+  }
+
+  Widget _pillChip(String text, bool active, VoidCallback onTap) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: active ? Colors.black.withOpacity(0.06) : Colors.white.withOpacity(0.32),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white.withOpacity(0.40)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 14,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Text(
+                text,
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12.5,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -388,40 +447,73 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Widget _statusPill(String label, bool selected, Color activeColor, VoidCallback onTap) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(30),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? activeColor : Colors.white.withOpacity(0.45),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(
-            color: selected ? activeColor : Colors.black.withOpacity(0.08),
-          ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w800,
-            color: selected ? Colors.white : Colors.black87,
+    final fill = selected ? activeColor.withOpacity(0.18) : Colors.white.withOpacity(0.20);
+    final border = selected ? activeColor.withOpacity(0.28) : Colors.white.withOpacity(0.40);
+    final txt = selected ? activeColor : Colors.black87;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    fill,
+                    Colors.white.withOpacity(0.10),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: border, width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: activeColor.withOpacity(selected ? 0.10 : 0.04),
+                    blurRadius: 18,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w900,
+                  color: txt,
+                ),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _kpiGlass(String title, String value, IconData icon) {
+  Widget _kpiGlass(String title, String value, IconData icon, Color tint) {
     return Expanded(
-      child: _glassCard(
+      child: _tintedGlassCard(
+        tint: tint,
         child: Row(
           children: [
             Container(
               height: 42,
               width: 42,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.06),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    tint.withOpacity(0.35),
+                    Colors.white.withOpacity(0.10),
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.35)),
               ),
               child: Icon(icon, color: Colors.black87, size: 20),
             ),
@@ -452,6 +544,27 @@ class _ReportsPageState extends State<ReportsPage> {
         fontSize: 16.5,
         fontWeight: FontWeight.w800,
         color: Colors.black87,
+      ),
+    );
+  }
+
+  Widget _miniGlassChip(String label, Color base) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: base.withOpacity(0.14),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: base.withOpacity(0.28), width: 1.1),
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: base),
+          ),
+        ),
       ),
     );
   }
@@ -492,6 +605,10 @@ class _ReportsPageState extends State<ReportsPage> {
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(_headerRadius)),
+        ),
+        clipBehavior: Clip.antiAlias,
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _loadFromApi,
@@ -501,7 +618,7 @@ class _ReportsPageState extends State<ReportsPage> {
         child: const Icon(Icons.refresh_rounded),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: _accent))
           : Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -534,60 +651,69 @@ class _ReportsPageState extends State<ReportsPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              InkWell(
+              ClipRRect(
                 borderRadius: BorderRadius.circular(30),
-                onTap: _openSchemeFilter,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.50),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: Colors.black.withOpacity(0.08)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.tune_rounded, size: 18, color: Colors.black87),
-                      const SizedBox(width: 8),
-                      Text(
-                        _selectedSchemes.isEmpty ? "Loan" : "Loan (${_selectedSchemes.length})",
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                    onTap: _openSchemeFilter,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.32),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: Colors.white.withOpacity(0.42)),
                       ),
-                      const Spacer(),
-                      const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black45),
-                    ],
+                      child: Row(
+                        children: [
+                          const Icon(Icons.tune_rounded, size: 18, color: Colors.black87),
+                          const SizedBox(width: 8),
+                          Text(
+                            _selectedSchemes.isEmpty ? "Loan" : "Loan (${_selectedSchemes.length})",
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w900),
+                          ),
+                          const Spacer(),
+                          const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black45),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _statusPill("Accepted", _showAccepted, const Color(0xFF1F9D55), () => setState(() => _showAccepted = !_showAccepted)),
-                  _statusPill("Rejected", _showRejected, const Color(0xFFE11D48), () => setState(() => _showRejected = !_showRejected)),
-                  _statusPill("Pending", _showPending, const Color(0xFFB45309), () => setState(() => _showPending = !_showPending)),
-                ],
+              Align(
+                alignment: Alignment.center,
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  runAlignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _statusPill("Accepted", _showAccepted, const Color(0xFF1F9D55), () => setState(() => _showAccepted = !_showAccepted)),
+                    _statusPill("Rejected", _showRejected, const Color(0xFFE11D48), () => setState(() => _showRejected = !_showRejected)),
+                    _statusPill("Pending", _showPending, const Color(0xFFB45309), () => setState(() => _showPending = !_showPending)),
+                  ],
+                ),
               ),
-
               const SizedBox(height: 18),
               _sectionTitle("Performance Overview"),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _kpiGlass("Total Applications", total.toString(), Icons.folder_copy_outlined),
+                  _kpiGlass("Total Applications", total.toString(), Icons.folder_copy_outlined, const Color(0xFFFFD7C2)),
                   const SizedBox(width: 12),
-                  _kpiGlass("Approval Rate", "${(approvalRate * 100).toStringAsFixed(0)}%", Icons.task_alt),
+                  _kpiGlass("Approval Rate", "${(approvalRate * 100).toStringAsFixed(0)}%", Icons.task_alt, const Color(0xFFE9DDFF)),
                 ],
               ),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _kpiGlass("Pending", pending.toString(), Icons.hourglass_empty_rounded),
+                  _kpiGlass("Pending", pending.toString(), Icons.hourglass_empty_rounded, const Color(0xFFFFF0B8)),
                   const SizedBox(width: 12),
-                  _kpiGlass("Verified Amount", "₹${_fmtCompact(verifiedAmount)}", Icons.currency_rupee_rounded),
+                  _kpiGlass("Verified Amount", "₹${_fmtCompact(verifiedAmount)}", Icons.currency_rupee_rounded, const Color(0xFFD7F5E6)),
                 ],
               ),
-
               const SizedBox(height: 18),
               _sectionTitle("Scheme Breakdown (Bar Graph)"),
               const SizedBox(height: 12),
@@ -627,7 +753,7 @@ class _ReportsPageState extends State<ReportsPage> {
                                 padding: const EdgeInsets.only(top: 8),
                                 child: Text(
                                   _schemeOptions[i],
-                                  style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.black87),
+                                  style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w900, color: Colors.black87),
                                 ),
                               );
                             },
@@ -645,11 +771,11 @@ class _ReportsPageState extends State<ReportsPage> {
                             final val = rod.toY.toInt();
                             return BarTooltipItem(
                               "$name\n",
-                              GoogleFonts.inter(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 12),
+                              GoogleFonts.inter(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 12),
                               children: [
                                 TextSpan(
                                   text: "$val applications",
-                                  style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: Colors.white.withOpacity(0.9), fontSize: 11.5),
+                                  style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: Colors.white.withOpacity(0.9), fontSize: 11.5),
                                 ),
                               ],
                             );
@@ -665,7 +791,7 @@ class _ReportsPageState extends State<ReportsPage> {
                               toY: y,
                               width: 24,
                               borderRadius: BorderRadius.circular(8),
-                              color: Colors.green,
+                              color: Colors.green.withOpacity(0.78),
                             ),
                           ],
                         );
@@ -674,7 +800,6 @@ class _ReportsPageState extends State<ReportsPage> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 18),
               _sectionTitle("Recent Activity"),
               const SizedBox(height: 12),
@@ -688,13 +813,12 @@ class _ReportsPageState extends State<ReportsPage> {
                   ),
                 )
               else
-                Column(
-                  children: recent8.map(_activityTile).toList(),
-                ),
+                Column(children: recent8.map(_activityTile).toList()),
             ],
           ),
         ),
       ),
+      bottomNavigationBar: OfficerNavBar(currentIndex: 3, officerId: widget.officerId),
     );
   }
 
@@ -705,20 +829,20 @@ class _ReportsPageState extends State<ReportsPage> {
 
     IconData icon;
     String label;
-    Color chipBg;
+    Color chipColor;
 
     if (isVerified) {
       icon = Icons.check_circle_rounded;
-      label = "Accepted";
-      chipBg = const Color(0xFF1F9D55);
+      label = "accepted";
+      chipColor = const Color(0xFF1F9D55);
     } else if (isRejected) {
       icon = Icons.cancel_rounded;
-      label = "Rejected";
-      chipBg = const Color(0xFFE11D48);
+      label = "rejected";
+      chipColor = const Color(0xFFE11D48);
     } else {
       icon = Icons.hourglass_bottom_rounded;
-      label = "Pending";
-      chipBg = const Color(0xFFB45309);
+      label = "pending";
+      chipColor = const Color(0xFFB45309);
     }
 
     return Padding(
@@ -772,20 +896,417 @@ class _ReportsPageState extends State<ReportsPage> {
                 ),
               ),
               const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: chipBg,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  label,
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: Colors.white),
-                ),
-              ),
+              _miniGlassChip(label, chipColor),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// =========================
+// Fancy month-only range picker (square, arrows, no pencil)
+// =========================
+class _FancyRangePickerDialog extends StatefulWidget {
+  final DateTime firstDate;
+  final DateTime lastDate;
+  final DateTimeRange initialRange;
+  final Color accent;
+
+  const _FancyRangePickerDialog({
+    required this.firstDate,
+    required this.lastDate,
+    required this.initialRange,
+    required this.accent,
+  });
+
+  @override
+  State<_FancyRangePickerDialog> createState() => _FancyRangePickerDialogState();
+}
+
+class _FancyRangePickerDialogState extends State<_FancyRangePickerDialog> {
+  static const double r = 12.0;
+
+  late DateTime _month;
+  DateTime? _start;
+  DateTime? _end;
+
+  static const _months = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _start = DateTime(widget.initialRange.start.year, widget.initialRange.start.month, widget.initialRange.start.day);
+    _end = DateTime(widget.initialRange.end.year, widget.initialRange.end.month, widget.initialRange.end.day);
+    _month = DateTime(_start!.year, _start!.month, 1);
+  }
+
+  bool _isSelectable(DateTime d) {
+    final dd = DateTime(d.year, d.month, d.day);
+    final a = DateTime(widget.firstDate.year, widget.firstDate.month, widget.firstDate.day);
+    final b = DateTime(widget.lastDate.year, widget.lastDate.month, widget.lastDate.day);
+    return !dd.isBefore(a) && !dd.isAfter(b);
+  }
+
+  String _monthTitle(DateTime m) => "${_months[m.month - 1]} ${m.year}";
+
+  DateTime _addMonths(DateTime m, int delta) {
+    final y = m.year + ((m.month - 1 + delta) ~/ 12);
+    final mm = ((m.month - 1 + delta) % 12) + 1;
+    return DateTime(y, mm, 1);
+  }
+
+  bool _canGoPrev() {
+    final prev = _addMonths(_month, -1);
+    final prevEnd = DateTime(prev.year, prev.month, DateUtils.getDaysInMonth(prev.year, prev.month));
+    return !_dateOnly(prevEnd).isBefore(_dateOnly(widget.firstDate));
+  }
+
+  bool _canGoNext() {
+    final next = _addMonths(_month, 1);
+    final nextStart = DateTime(next.year, next.month, 1);
+    return !_dateOnly(nextStart).isAfter(_dateOnly(widget.lastDate));
+  }
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  void _onTapDay(DateTime d) {
+    if (!_isSelectable(d)) return;
+    final day = _dateOnly(d);
+
+    if (_start == null || (_start != null && _end != null)) {
+      setState(() {
+        _start = day;
+        _end = null;
+      });
+      return;
+    }
+
+    if (_start != null && _end == null) {
+      if (day.isBefore(_start!)) {
+        setState(() {
+          _end = _start;
+          _start = day;
+        });
+      } else {
+        setState(() {
+          _end = day;
+        });
+      }
+    }
+  }
+
+  bool _inRange(DateTime d) {
+    if (_start == null) return false;
+    final day = _dateOnly(d);
+
+    if (_end == null) return DateUtils.isSameDay(day, _start);
+    return !day.isBefore(_start!) && !day.isAfter(_end!);
+  }
+
+  bool _isStart(DateTime d) => _start != null && DateUtils.isSameDay(d, _start);
+  bool _isEnd(DateTime d) => _end != null && DateUtils.isSameDay(d, _end);
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accent;
+
+    final first = DateTime(_month.year, _month.month, 1);
+    final daysInMonth = DateUtils.getDaysInMonth(_month.year, _month.month);
+
+    // Sunday-first grid
+    final offset = first.weekday % 7; // Sun=0, Mon=1...Sat=6
+    final gridStart = first.subtract(Duration(days: offset));
+
+    final cells = List<DateTime>.generate(42, (i) => gridStart.add(Duration(days: i)));
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(r),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(r),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withOpacity(0.82),
+                  Colors.white.withOpacity(0.62),
+                ],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(0.55), width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.18),
+                  blurRadius: 28,
+                  offset: const Offset(0, 16),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top row: title + actions
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "Select Range",
+                          style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w800, color: Colors.black87),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text("Cancel", style: GoogleFonts.inter(fontWeight: FontWeight.w900)),
+                      ),
+                      const SizedBox(width: 6),
+                      TextButton(
+                        onPressed: _start == null
+                            ? null
+                            : () {
+                          final s = _start!;
+                          final e = _end ?? _start!;
+                          Navigator.pop(context, DateTimeRange(start: s, end: e));
+                        },
+                        child: Text("Apply", style: GoogleFonts.inter(fontWeight: FontWeight.w900)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+
+                  // Month header with arrows
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.55),
+                      border: Border.all(color: Colors.black.withOpacity(0.06)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: _canGoPrev()
+                              ? () => setState(() => _month = _addMonths(_month, -1))
+                              : null,
+                          icon: const Icon(Icons.chevron_left_rounded),
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              _monthTitle(_month),
+                              style: GoogleFonts.poppins(fontSize: 15.5, fontWeight: FontWeight.w900, color: Colors.black87),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: _canGoNext()
+                              ? () => setState(() => _month = _addMonths(_month, 1))
+                              : null,
+                          icon: const Icon(Icons.chevron_right_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // Weekday labels
+                  Row(
+                    children: const [
+                      _W("Su"), _W("Mo"), _W("Tu"), _W("We"), _W("Th"), _W("Fr"), _W("Sa")
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Grid
+                  AspectRatio(
+                    aspectRatio: 7 / 6,
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: 42,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 7,
+                        mainAxisSpacing: 6,
+                        crossAxisSpacing: 6,
+                      ),
+                      itemBuilder: (ctx, i) {
+                        final d = cells[i];
+                        final inMonth = d.month == _month.month;
+                        final selectable = _isSelectable(d);
+                        final inRange = _inRange(d);
+                        final isStart = _isStart(d);
+                        final isEnd = _isEnd(d);
+
+                        Color? bg;
+                        Border? border;
+                        Color txt = Colors.black87;
+
+                        if (!inMonth) txt = Colors.black38;
+                        if (!selectable) txt = Colors.black26;
+
+                        if (inRange) {
+                          if (isStart || isEnd) {
+                            bg = accent.withOpacity(0.92);
+                            txt = Colors.white;
+                          } else {
+                            bg = accent.withOpacity(0.14);
+                          }
+                        } else {
+                          bg = Colors.transparent;
+                          border = null;
+                        }
+
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: selectable ? () => _onTapDay(d) : null,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: bg,
+                              border: border,
+                              borderRadius: BorderRadius.circular(10),
+                              boxShadow: inRange
+                                  ? [
+                                BoxShadow(
+                                  color: accent.withOpacity((isStart || isEnd) ? 0.20 : 0.08),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 8),
+                                )
+                              ]
+                                  : const [],
+                            ),
+                            child: Center(
+                              child: Text(
+                                "${d.day}",
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w900,
+                                  color: txt,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // Range readout (small)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _RangePill(
+                          label: "Start",
+                          value: _start == null ? "--" : _fmt(_start!),
+                          accent: accent,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _RangePill(
+                          label: "End",
+                          value: (_end ?? _start) == null ? "--" : _fmt((_end ?? _start)!),
+                          accent: accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _fmt(DateTime d) {
+    const m = [
+      "Jan","Feb","Mar","Apr","May","Jun",
+      "Jul","Aug","Sep","Oct","Nov","Dec"
+    ];
+    return "${m[d.month - 1]} ${d.day}, ${d.year}";
+  }
+}
+
+class _W extends StatelessWidget {
+  final String t;
+  const _W(this.t);
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Center(
+        child: Text(
+          t,
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w900,
+            color: Colors.black54,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RangePill extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color accent;
+
+  const _RangePill({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.black.withOpacity(0.06)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 10,
+            width: 10,
+            decoration: BoxDecoration(
+              color: accent.withOpacity(0.85),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: Colors.black54, fontSize: 11)),
+                const SizedBox(height: 2),
+                Text(value, style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: Colors.black87, fontSize: 12.5)),
+              ],
+            ),
+
+          ),
+        ],
       ),
     );
   }

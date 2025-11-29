@@ -7,7 +7,7 @@ const String kScreenModelPath = 'assets/models/screen_detector_efficientb0.tflit
 
 const double kBlurLowThreshold  = 0.20;
 const double kBlurHighThreshold = 0.85;
-const double kScreenThreshold = 0.60;
+const double kScreenThreshold = 0.70;
 
 
 enum AiVerdict { valid, blurInvalid, blurBorderline, screenInvalid, notReady, decodeFail, error }

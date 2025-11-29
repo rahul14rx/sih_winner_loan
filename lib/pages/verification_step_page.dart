@@ -1,3 +1,5 @@
+
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -42,7 +44,7 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
   // NEW: Location Security Service instance
   final LocationSecurityService _locationSecurity = LocationSecurityService();
   String _locationStatus = "Initializing...";
-  
+
   final TextEditingController _amountController = TextEditingController();
 
   bool get _showAmountInput => widget.step.processId == 1;
@@ -363,7 +365,7 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
                 style: TextStyle(color: Colors.grey[500], fontSize: 12)),
             const SizedBox(height: 24),
 
-             // NEW: Show location status
+            // NEW: Show location status
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -497,3 +499,4 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
     );
   }
 }
+

@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_jailbreak_detection/flutter_jailbreak_detection.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/pages/bank_dashboard_page.dart';
 import 'package:loan2/pages/beneficiary_dashboard.dart';
@@ -17,58 +14,6 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   String _selectedLang = 'en';
-
-  @override
-  void initState() {
-    super.initState();
-    // Use a post-frame callback to safely show a dialog
-    // after the first frame has been built.
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   _checkDeveloperMode();
-    // });
-  }
-
-  Future<void> _checkDeveloperMode() async {
-    bool developerMode;
-    try {
-      developerMode = await FlutterJailbreakDetection.developerMode;
-    } on PlatformException {
-      developerMode = true; // Assume developer mode in case of error
-    }
-
-    if (developerMode && mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false, // User must interact with the dialog
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('Developer Mode Enabled'),
-            content: const SingleChildScrollView(
-              child: ListBody(
-                children: <Widget>[
-                  Text('This app cannot be used with Developer Mode enabled.'),
-                  SizedBox(height: 16),
-                  Text('To turn it off:'),
-                  Text('1. Go to your device Settings.'),
-                  Text('2. Find "Developer options".'),
-                  Text('3. Toggle the switch at the top to OFF.'),
-                ],
-              ),
-            ),
-            actions: <Widget>[
-              TextButton(
-                child: const Text('Exit App'),
-                onPressed: () {
-                  exit(0); // Closes the app
-                },
-              ),
-            ],
-          );
-        },
-      );
-    }
-  }
-
 
   final Map<String, Map<String, String>> _localizedStrings = {
     'en': {
@@ -111,11 +56,8 @@ class _LoginPageState extends State<LoginPage> {
     }
   };
 
-  String getStr(String key) {
-    return _localizedStrings[_selectedLang]?[key] ?? key;
-  }
+  String getStr(String key) => _localizedStrings[_selectedLang]?[key] ?? key;
 
-  // --- OFFICIAL LOGIN SHEET ---
   void _showBankOfficialLogin(BuildContext context) {
     final officerIdController = TextEditingController();
     final passwordController = TextEditingController();
@@ -148,19 +90,21 @@ class _LoginPageState extends State<LoginPage> {
               if (officerId.isNotEmpty && password.isNotEmpty) {
                 final result = await login_user(officerId, password);
                 if (result.isNotEmpty && context.mounted) {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
+                  Navigator.pop(context); // closes the bottom sheet
+
+                  Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(builder: (_) => BankDashboardPage(officerId: officerId)),
+                        (_) => false, // removes LoginPage from stack
                   );
-                } else if (context.mounted) {
+                }
+                else if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Login Failed. Check credentials.")),
                   );
                 }
               } else if (context.mounted) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Fields cannot be empty.")),
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Fields cannot be empty.")),
                 );
               }
             },
@@ -170,11 +114,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // --- BENEFICIARY LOGIN SHEET (Fixed State Logic) ---
   void _showBeneficiaryLogin(BuildContext context) {
     final phoneController = TextEditingController();
 
-    // OTP Controllers
     final otp1 = TextEditingController();
     final otp2 = TextEditingController();
     final otp3 = TextEditingController();
@@ -183,7 +125,6 @@ class _LoginPageState extends State<LoginPage> {
     final focus2 = FocusNode();
     final focus3 = FocusNode();
 
-    // We use a boolean variable to track state, but inside the builder we rely on setSheetState
     bool isOtpSent = false;
 
     showModalBottomSheet(
@@ -199,34 +140,33 @@ class _LoginPageState extends State<LoginPage> {
                 : getStr('beneficiary_subtitle'),
             children: [
               if (!isOtpSent) ...[
-                // Step 1: Phone Number
                 TextField(
                   controller: phoneController,
                   keyboardType: TextInputType.phone,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10)
+                  ],
                   decoration: _inputDecoration(getStr('mobile_number'), Icons.phone_android_rounded),
                 ),
                 const SizedBox(height: 30),
                 _PrimaryButton(
                   text: getStr('send_otp'),
-                  color: const Color(0xFF138808), // Green
+                  color: const Color(0xFF138808),
                   onPressed: () {
                     if (phoneController.text.length == 10) {
-                      // CRITICAL FIX: Use setSheetState to rebuild the bottom sheet UI
-                      setSheetState(() {
-                        isOtpSent = true;
-                      });
-                      // Auto-focus first OTP box
+                      setSheetState(() => isOtpSent = true);
                       Future.delayed(const Duration(milliseconds: 300), () {
                         if (focus1.canRequestFocus) focus1.requestFocus();
                       });
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enter a valid 10-digit number")));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Enter a valid 10-digit number")),
+                      );
                     }
                   },
                 ),
               ] else ...[
-                // Step 2: OTP
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -240,10 +180,9 @@ class _LoginPageState extends State<LoginPage> {
                   text: getStr('verify_otp'),
                   color: const Color(0xFF138808),
                   onPressed: () {
-                    String otp = otp1.text + otp2.text + otp3.text;
-                    // Mock OTP is 200
+                    final otp = otp1.text + otp2.text + otp3.text;
                     if (otp == '200') {
-                      Navigator.pop(context); // Close sheet
+                      Navigator.pop(context);
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -251,20 +190,29 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       );
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid OTP (Try 200)")));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Invalid OTP (Try 200)")),
+                      );
                     }
                   },
                 ),
                 Center(
                   child: TextButton(
                     onPressed: () {
-                      // Use setSheetState to go back
                       setSheetState(() {
                         isOtpSent = false;
-                        otp1.clear(); otp2.clear(); otp3.clear();
+                        otp1.clear();
+                        otp2.clear();
+                        otp3.clear();
                       });
                     },
-                    child: Text("Change Number", style: GoogleFonts.inter(color: Colors.grey[600], fontWeight: FontWeight.w600)),
+                    child: Text(
+                      "Change Number",
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 )
               ]
@@ -281,8 +229,14 @@ class _LoginPageState extends State<LoginPage> {
       prefixIcon: Icon(icon, color: const Color(0xFF435E91)),
       filled: true,
       fillColor: Colors.grey[50],
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Color(0xFF435E91))),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFF435E91)),
+      ),
     );
   }
 
@@ -292,7 +246,6 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: const Color(0xFFFFFFFF),
       body: Stack(
         children: [
-          // --- Background Shapes ---
           Positioned(
             top: -300,
             right: -300,
@@ -300,9 +253,8 @@ class _LoginPageState extends State<LoginPage> {
               width: 1000,
               height: 700,
               decoration: BoxDecoration(
-                shape: BoxShape.rectangle,
                 gradient: RadialGradient(
-                  colors: [const Color(0xFFFF8A18).withOpacity(0.30), Colors.transparent], // Saffron hint
+                  colors: [const Color(0xFFFF8A18).withOpacity(0.30), Colors.transparent],
                 ),
               ),
             ),
@@ -314,16 +266,12 @@ class _LoginPageState extends State<LoginPage> {
               width: 1000,
               height: 600,
               decoration: BoxDecoration(
-                shape: BoxShape.rectangle,
                 gradient: RadialGradient(
-                  colors: [const Color(0xFF15FB02).withOpacity(0.30), Colors.transparent], // Green hint
+                  colors: [const Color(0xFF15FB02).withOpacity(0.30), Colors.transparent],
                 ),
               ),
             ),
           ),
-
-
-          // --- Language Switcher ---
           Positioned(
             top: 50,
             right: 20,
@@ -332,7 +280,7 @@ class _LoginPageState extends State<LoginPage> {
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Color(0xFF000080)),
+                border: Border.all(color: const Color(0xFF000080)),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
               ),
               child: DropdownButtonHideUnderline(
@@ -349,8 +297,6 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
-
-          // --- Main Content ---
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -363,26 +309,35 @@ class _LoginPageState extends State<LoginPage> {
                       child: Container(
                         width: 150,
                         height: 120,
-                        // FIX: Replaced Image.network with a placeholder Icon to prevent offline crash
-                        child: const Icon(Icons.account_balance, size: 80, color: Color(0xFF000080)),
+                        child: Image.network(
+                          'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/1800px-Emblem_of_India.svg.png',
+                          height: 100,
+                          errorBuilder: (_,__,___) => const Icon(Icons.account_balance, size: 50, color: Colors.grey),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 20),
+
 
                     Text(
                       getStr('app_title'),
                       style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF000080), letterSpacing: 0.5),
                     ),
+
+                    //const SizedBox(height: 20),
+
                     const SizedBox(height: 8),
                     Text(
                       getStr('ministry'),
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey[600], height: 1.5),
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                        height: 1.5,
+                      ),
                     ),
-
                     const SizedBox(height: 60),
-
-                    // Login Cards
                     _LoginOptionCard(
                       title: getStr('official_login'),
                       subtitle: getStr('official_subtitle'),
@@ -391,9 +346,7 @@ class _LoginPageState extends State<LoginPage> {
                       isPrimary: true,
                       onTap: () => _showBankOfficialLogin(context),
                     ),
-
                     const SizedBox(height: 20),
-
                     _LoginOptionCard(
                       title: getStr('beneficiary_login'),
                       subtitle: getStr('beneficiary_subtitle'),
@@ -402,15 +355,20 @@ class _LoginPageState extends State<LoginPage> {
                       isPrimary: true,
                       onTap: () => _showBeneficiaryLogin(context),
                     ),
-
                     const SizedBox(height: 80),
-
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.verified_user_outlined, size: 16, color: Colors.grey[400]),
+                        Icon(Icons.verified_user_outlined, size: 16, color: Colors.blue[900]),
                         const SizedBox(width: 8),
-                        Text(getStr('secure_footer'), style: GoogleFonts.inter(color: Color(0xFF083188), fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text(
+                          getStr('secure_footer'),
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFF083188),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -424,8 +382,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// --- REUSABLE WIDGETS ---
-
 class _LoginBottomSheet extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -437,10 +393,10 @@ class _LoginBottomSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.only(
-          left: 32,
-          right: 32,
-          top: 32,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 32
+        left: 32,
+        right: 32,
+        top: 32,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 32,
       ),
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -450,7 +406,16 @@ class _LoginBottomSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(child: Container(width: 48, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2.5)))),
+          Center(
+            child: Container(
+              width: 48,
+              height: 5,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2.5),
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
           Text(title, style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: const Color(0xFF1A1A1A))),
           const SizedBox(height: 8),
@@ -487,7 +452,7 @@ class _OtpBox extends StatelessWidget {
           filled: true,
           fillColor: Colors.grey[50],
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Color(0xFF138808))),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF138808))),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF138808), width: 2)),
         ),
         onChanged: (value) {
@@ -513,7 +478,7 @@ class _LoginOptionCard extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.onTap,
-    this.isPrimary = false
+    this.isPrimary = false,
   });
 
   @override

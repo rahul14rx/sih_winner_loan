@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:loan2/pages/login_page.dart';
 import 'package:loan2/pages/loan_process_page.dart';
 import 'package:loan2/services/sync_service.dart';
+import 'package:loan2/services/app_i18n.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SyncService.startListener();
-
   runApp(const NyaySahayakApp());
 }
 
@@ -15,26 +15,30 @@ class NyaySahayakApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Nyay Sahayak',
-      debugShowCheckedModeBanner: false,
-      theme: _buildTheme(),
-      home: const LoginPage(),
-      routes: {
-        '/loan-process': (context) {
-          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    // Rebuild whole app when language changes
+    return ValueListenableBuilder<String>(
+      valueListenable: AppI18n.lang,
+      builder: (_, __, ___) {
+        return MaterialApp(
+          title: 'Nyay Sahayak',
+          debugShowCheckedModeBanner: false,
+          theme: _buildTheme(),
+          home: const LoginPage(),
+          routes: {
+            '/loan-process': (context) {
+              final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
 
-          final userId = args?['userId'] as String? ?? '';
-          final loanId = args?['loanId'] as String? ?? '';
+              final userId = (args?['userId'] as String?) ?? '';
+              final loanId = (args?['loanId'] as String?) ?? '';
 
-          if (loanId.isEmpty) {
-            return const Scaffold(body: Center(child: Text("loanId missing")));
-          }
-          return LoanProcessPage(loanId: loanId, userId: userId);
-        },
+              if (loanId.isEmpty) {
+                return const Scaffold(body: Center(child: Text("loanId missing")));
+              }
+              return LoanProcessPage(loanId: loanId, userId: userId);
+            },
+          },
+        );
       },
-
-
     );
   }
 
@@ -42,17 +46,15 @@ class NyaySahayakApp extends StatelessWidget {
     final base = ThemeData.light();
 
     return base.copyWith(
-      primaryColor: const Color(0xFFD26C00), // Saffron
+      primaryColor: const Color(0xFFD26C00),
       scaffoldBackgroundColor: const Color(0xFFFAFAFA),
 
-      // 1. Typography (FIX: Removed GoogleFonts to prevent offline crash)
       textTheme: base.textTheme.copyWith(
         displayLarge: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A)),
         bodyLarge: const TextStyle(fontSize: 16, color: Color(0xFF4A4A4A)),
         bodyMedium: const TextStyle(fontSize: 14, color: Color(0xFF6A6A6A)),
       ),
 
-      // 2. Card Theme (FIX: Corrected class name)
       cardTheme: CardThemeData(
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -63,7 +65,6 @@ class NyaySahayakApp extends StatelessWidget {
         margin: EdgeInsets.zero,
       ),
 
-      // 3. Input Fields
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.grey.shade50,
@@ -83,7 +84,6 @@ class NyaySahayakApp extends StatelessWidget {
         prefixIconColor: const Color(0xFF435E91),
       ),
 
-      // 4. Buttons
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF138808),

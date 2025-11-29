@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api.dart';
 import 'loan_detail_page.dart';
+import 'package:loan2/widgets/officer_nav_bar.dart';
 
 class HistoryPage extends StatefulWidget {
   final String officerId;
@@ -38,6 +39,9 @@ class _LoanRow {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
+  static const _accent = Color(0xFF1E5AA8);
+  static const double _headerRadius = 25;
+
   final _q = TextEditingController();
   bool _loading = true;
 
@@ -190,10 +194,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       "Loan Schemes",
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -211,10 +212,7 @@ class _HistoryPageState extends State<HistoryPage> {
                         });
                       },
                       activeColor: const Color(0xFFFF9933),
-                      title: Text(
-                        s,
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                      ),
+                      title: Text(s, style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
                       controlAffinity: ListTileControlAffinity.leading,
                       contentPadding: EdgeInsets.zero,
                     );
@@ -227,14 +225,9 @@ class _HistoryPageState extends State<HistoryPage> {
                           onPressed: () => setSheet(() => temp.clear()),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: Text(
-                            "Clear",
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-                          ),
+                          child: Text("Clear", style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -252,15 +245,10 @@ class _HistoryPageState extends State<HistoryPage> {
                             backgroundColor: const Color(0xFFFF9933),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             elevation: 0,
                           ),
-                          child: Text(
-                            "Apply",
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-                          ),
+                          child: Text("Apply", style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                         ),
                       ),
                     ],
@@ -288,9 +276,7 @@ class _HistoryPageState extends State<HistoryPage> {
         decoration: BoxDecoration(
           color: selected ? activeColor : Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? activeColor : Colors.grey.shade300,
-          ),
+          border: Border.all(color: selected ? activeColor : Colors.grey.shade300),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.03),
@@ -408,12 +394,20 @@ class _HistoryPageState extends State<HistoryPage> {
       appBar: AppBar(
         title: Text(
           "History",
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.black87),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.white),
         ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0.5,
-        centerTitle: false,
+        backgroundColor: _accent,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(_headerRadius)),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      bottomNavigationBar: OfficerNavBar(
+        officerId: widget.officerId,
+        currentIndex: 2,
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _load,

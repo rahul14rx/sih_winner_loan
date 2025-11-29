@@ -8,6 +8,7 @@ import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
 import 'package:loan2/services/sync_service.dart';
 import 'package:loan2/services/encryption_service.dart';
+import 'package:loan2/widgets/officer_nav_bar.dart';
 
 class CreateBeneficiaryPage extends StatefulWidget {
   final String officerId;
@@ -40,7 +41,8 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
   // State for the new file picker
   File? _loanAgreementFile;
 
-  static const _accent = Color(0xFFFF9933);
+  static const _accent = Color(0xFF1E5AA8);
+  static const double _headerRadius = 25;
 
   // --- DATA FOR DROPDOWNS (UNCHANGED) ---
   final List<String> _schemes = ['NBCFDC', 'NSFDC', 'NSKFDC'];
@@ -49,22 +51,45 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     final p = (_selectedPurpose ?? '').toLowerCase();
     return p.contains('construction');
   }
+
   final Map<String, List<String>> _loanTypesByScheme = {
-    'NBCFDC': ['General Term Loan', 'Micro-credit Loan', 'Education Loan', 'Skill Development Loan', 'Entrepreneurial Development Loan', 'Livelihood Loan'],
-    'NSKFDC': ['Self-Employment Scheme for Liberation & Rehabilitation of Safai Karamchari (SRMS)', 'Sanitation Equipment Loan', 'Small Business Loans', 'Skill Development Loan'],
-    'NSFDC': ['Term Loan', 'Micro-Finance Loan', 'Skill Development Loan', 'Education Loan', 'Livelihood Loan'],
+    'NBCFDC': [
+      'General Term Loan',
+      'Micro-credit Loan',
+      'Education Loan',
+      'Skill Development Loan',
+      'Entrepreneurial Development Loan',
+      'Livelihood Loan'
+    ],
+    'NSKFDC': [
+      'Self-Employment Scheme for Liberation & Rehabilitation of Safai Karamchari (SRMS)',
+      'Sanitation Equipment Loan',
+      'Small Business Loans',
+      'Skill Development Loan'
+    ],
+    'NSFDC': [
+      'Term Loan',
+      'Micro-Finance Loan',
+      'Skill Development Loan',
+      'Education Loan',
+      'Livelihood Loan'
+    ],
   };
+
   final Map<String, Map<String, List<String>>> _purposeBySchemeCategory = {
     'NBCFDC': {
-      'General Term Loan': ['Auto Rickshaws','Tractors','Shop construction / purchase'],
-      'Micro-credit Loan': ['Sewing Machines','Cows'],
-      'Education Loan': ['Laptop','Fees paid for admissions','Courses'],
-      'Skill Development Loan': ['Technical Courses','Non-Technical Courses'],
+      'General Term Loan': ['Auto Rickshaws', 'Tractors', 'Shop construction / purchase'],
+      'Micro-credit Loan': ['Sewing Machines', 'Cows'],
+      'Education Loan': ['Laptop', 'Fees paid for admissions', 'Courses'],
+      'Skill Development Loan': ['Technical Courses', 'Non-Technical Courses'],
       'Entrepreneurial Development Loan': ['Laptop'],
-      'Livelihood Loan': ['Sewing Machine','Cows'],
+      'Livelihood Loan': ['Sewing Machine', 'Cows'],
     },
     'NSKFDC': {
-      'Self-Employment Scheme for Liberation & Rehabilitation of Safai Karamchari (SRMS)': ['E-Rickshaws', 'Construction of shops / kiosks'],
+      'Self-Employment Scheme for Liberation & Rehabilitation of Safai Karamchari (SRMS)': [
+        'E-Rickshaws',
+        'Construction of shops / kiosks'
+      ],
       'Sanitation Equipment Loan': ['PPE kits (Safety gears)'],
       'Small Business Loans': ['Sewing Machine'],
       'Skill Development Loan': ['Courses'],
@@ -73,11 +98,13 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       'Term Loan': ['Tractor'],
       'Micro-Finance Loan': ['Sewing Machine'],
       'Skill Development Loan': ['Course', 'Laptop'],
-      'Education Loan': ['Admission Fees','Hostel Fees','Laptop','Courses'],
-      'Livelihood Loan': ['Sewing Machine','Cows'],
+      'Education Loan': ['Admission Fees', 'Hostel Fees', 'Laptop', 'Courses'],
+      'Livelihood Loan': ['Sewing Machine', 'Cows'],
     },
   };
+
   List<String> get _currentLoanTypes => _loanTypesByScheme[_selectedScheme] ?? const [];
+
   List<String> get _currentPurposes {
     final s = _selectedScheme;
     final c = _selectedLoanType;
@@ -111,7 +138,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
 
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
-     if (_loanAgreementFile == null) {
+    if (_loanAgreementFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please attach the loan agreement file."), backgroundColor: Colors.red),
       );
@@ -147,7 +174,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         request.fields['scheme'] = scheme;
         request.fields['loan_type'] = loanTypeFinal;
         request.fields['beneficiary_address'] = address; // NEW FIELD
-        request.fields['asset_purchased'] = asset;     // NEW FIELD
+        request.fields['asset_purchased'] = asset; // NEW FIELD
 
         if (docPath != null) {
           request.files.add(await http.MultipartFile.fromPath('loan_agreement', docPath)); // NEW FILE
@@ -166,13 +193,30 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         }
       } else {
         // Save offline if no internet
-        await _saveOffline(name: name, phone: phone, amount: amount, loanId: loanId, scheme: scheme, loanType: loanTypeFinal, address: address, asset: asset, docPath: docPath);
+        await _saveOffline(
+          name: name,
+          phone: phone,
+          amount: amount,
+          loanId: loanId,
+          scheme: scheme,
+          loanType: loanTypeFinal,
+          docPath: docPath,
+        );
         if (mounted) _showSuccessDialog(isOffline: true);
       }
     } catch (e) {
       debugPrint("API Error, saving offline: $e");
-      await _saveOffline(name: name, phone: phone, amount: amount, loanId: loanId, scheme: scheme, loanType: loanTypeFinal, address: address, asset: asset, docPath: docPath);
-       if (mounted) _showSuccessDialog(isOffline: true, error: e.toString());
+      await _saveOffline(
+        name: name,
+        phone: phone,
+        amount: amount,
+        loanId: loanId,
+        scheme: scheme,
+        loanType: loanTypeFinal,
+        docPath: docPath,
+      );
+
+      if (mounted) _showSuccessDialog(isOffline: true, error: e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -185,8 +229,6 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     required String loanId,
     required String scheme,
     required String loanType,
-    required String address,
-    required String asset,
     String? docPath,
   }) async {
     await DatabaseHelper.instance.insertPendingBeneficiary(
@@ -198,183 +240,419 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       scheme: scheme,
       loanType: loanType,
       docPath: docPath,
-      address: address,
-      asset: asset,
     );
   }
+
 
   void _showSuccessDialog({required bool isOffline, String? error}) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isOffline ? Colors.orange[50] : Colors.green[50],
-                shape: BoxShape.circle,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isOffline ? Colors.orange[50] : Colors.green[50],
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isOffline ? Icons.cloud_queue : Icons.check_circle,
+                  color: isOffline ? Colors.orange : Colors.green,
+                  size: 50,
+                ),
               ),
-              child: Icon(
-                isOffline ? Icons.cloud_queue : Icons.check_circle,
-                color: isOffline ? Colors.orange : Colors.green,
-                size: 50,
+              const SizedBox(height: 16),
+              Text(
+                isOffline ? "Saved Offline" : "Beneficiary Added",
+                style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Text(
+            isOffline
+                ? (error != null
+                ? "An API error occurred, but your data has been saved safely offline. It will sync automatically."
+                : "No internet. Data saved locally and will sync automatically.")
+                : "An SMS has been sent to ${_phoneController.text} with login credentials.",
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[600]),
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx); // close ONLY the dialog
+
+                  if (!mounted) return;
+
+                  _formKey.currentState?.reset();
+                  _nameController.clear();
+                  _phoneController.clear();
+                  _amountController.clear();
+                  _loanIdController.clear();
+                  _addressController.clear();
+                  _assetController.clear();
+
+                  setState(() {
+                    _selectedScheme = null;
+                    _selectedLoanType = null;
+                    _selectedPurpose = null;
+                    _selectedFloors = null;
+                    _loanAgreementFile = null;
+                  });
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isOffline ? Colors.orange : const Color(0xFF138808),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text("Done"),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(isOffline ? "Saved Offline" : "Beneficiary Added", style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
           ],
-        ),
-        content: Text(
-          isOffline 
-              ? (error != null ? "An API error occurred, but your data has been saved safely offline. It will sync automatically." : "No internet. Data saved locally and will sync automatically.")
-              : "An SMS has been sent to ${_phoneController.text} with login credentials.",
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[600]),
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isOffline ? Colors.orange : const Color(0xFF138808),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text("Done"),
-            ),
-          )
-        ],
-      ),
+        );
+      },
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        title: Text("Create Beneficiary", style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w600)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionHeader("Personal Information"),
-              _buildCard([
-                _buildTextField(controller: _nameController, label: "Full Name", icon: Icons.person_outline_rounded, validator: (v) => v!.isEmpty ? "Required" : null),
-                const SizedBox(height: 16),
-                _buildTextField(controller: _phoneController, label: "Mobile Number", icon: Icons.phone_android_rounded, inputType: TextInputType.phone, formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)], validator: (v) => v!.length != 10 ? "Invalid Number" : null),
-              ]),
-              const SizedBox(height: 24),
-              _buildSectionHeader("Loan Details"),
-              _buildCard([
-                _buildTextField(controller: _loanIdController, label: "Loan Application ID", icon: Icons.numbers_rounded, validator: (v) => v!.isEmpty ? "Required" : null),
-                const SizedBox(height: 16),
-                _buildTextField(controller: _amountController, label: "Sanctioned Amount (₹)", icon: Icons.currency_rupee_rounded, inputType: TextInputType.number, validator: (v) => v!.isEmpty ? "Required" : null),
-                const SizedBox(height: 16),
-                _buildDropdown(label: "Government Scheme", value: _selectedScheme, items: _schemes, onChanged: (v) => setState(() { _selectedScheme = v; _selectedLoanType = null; _selectedPurpose = null; _selectedFloors = null; }), icon: Icons.account_balance_rounded),
-                const SizedBox(height: 16),
-                _buildDropdown(label: "Loan Category", value: _selectedLoanType, items: _currentLoanTypes, enabled: _selectedScheme != null, onChanged: (v) => setState(() { _selectedLoanType = v; _selectedPurpose = null; }), icon: Icons.category_rounded),
-                const SizedBox(height: 16),
-                _buildDropdown(label: "Loan Purpose", value: _selectedPurpose, items: _currentPurposes, enabled: _selectedLoanType != null, onChanged: (v) => setState(() => _selectedPurpose = v), icon: Icons.task_alt_rounded),
-                if (_showFloorsDropdown) ...[
-                  const SizedBox(height: 16),
-                  _buildDropdown(label: "Number of Floors", value: _selectedFloors, items: _floors, onChanged: (v) => setState(() => _selectedFloors = v), icon: Icons.layers_rounded),
-                ]
-              ]),
-              const SizedBox(height: 24),
-              _buildSectionHeader("Asset & Agreement Details"), // MODIFIED SECTION
-              _buildCard([ // REPLACED _buildUploadCard with a new card
-                _buildTextField(
-                  controller: _addressController, // NEW
-                  label: "Beneficiary Address",
-                  icon: Icons.location_on_outlined,
-                  validator: (v) => v!.isEmpty ? "Required" : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _assetController, // NEW
-                  label: "Asset Purchased",
-                  icon: Icons.shopping_cart_outlined,
-                  validator: (v) => v!.isEmpty ? "Required" : null,
-                ),
-                const SizedBox(height: 24),
-                _buildFilePicker(), // NEW
-              ]),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _submitForm,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF138808), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 4, shadowColor: const Color(0xFF138808).withOpacity(0.4)),
-                  child: _isLoading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Text("Create & Send SMS", style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth;
+        final pad = w >= 900 ? 28.0 : (w >= 600 ? 20.0 : 16.0);
+        final gap = w >= 600 ? 14.0 : 12.0;
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF6F7FB),
+          appBar: AppBar(
+            backgroundColor: _accent,
+            elevation: 0,
+            centerTitle: true,
+            iconTheme: const IconThemeData(color: Colors.white),
+            title: Text(
+              "Create Beneficiary",
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: Colors.white),
+            ),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(_headerRadius)),
+            ),
+            clipBehavior: Clip.antiAlias,
+          ),
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(pad),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionHeader("Personal Information"),
+                        _buildCard([
+                          _buildTextField(
+                            controller: _nameController,
+                            label: "Full Name",
+                            icon: Icons.person_outline_rounded,
+                            validator: (v) => v!.isEmpty ? "Required" : null,
+                          ),
+                          SizedBox(height: gap),
+                          _buildTextField(
+                            controller: _phoneController,
+                            label: "Mobile Number",
+                            icon: Icons.phone_android_rounded,
+                            inputType: TextInputType.phone,
+                            formatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(10),
+                            ],
+                            validator: (v) => v!.length != 10 ? "Invalid Number" : null,
+                          ),
+                        ]),
+                        SizedBox(height: pad),
+
+                        _buildSectionHeader("Loan Details"),
+                        _buildCard([
+                          _buildTextField(
+                            controller: _loanIdController,
+                            label: "Loan Application ID",
+                            icon: Icons.numbers_rounded,
+                            validator: (v) => v!.isEmpty ? "Required" : null,
+                          ),
+                          SizedBox(height: gap),
+                          _buildTextField(
+                            controller: _amountController,
+                            label: "Sanctioned Amount (₹)",
+                            icon: Icons.currency_rupee_rounded,
+                            inputType: TextInputType.number,
+                            validator: (v) => v!.isEmpty ? "Required" : null,
+                          ),
+                          SizedBox(height: gap),
+                          _buildDropdown(
+                            label: "Government Scheme",
+                            value: _selectedScheme,
+                            items: _schemes,
+                            onChanged: (v) => setState(() {
+                              _selectedScheme = v;
+                              _selectedLoanType = null;
+                              _selectedPurpose = null;
+                              _selectedFloors = null;
+                            }),
+                            icon: Icons.account_balance_rounded,
+                          ),
+                          SizedBox(height: gap),
+                          _buildDropdown(
+                            label: "Loan Category",
+                            value: _selectedLoanType,
+                            items: _currentLoanTypes,
+                            enabled: _selectedScheme != null,
+                            onChanged: (v) => setState(() {
+                              _selectedLoanType = v;
+                              _selectedPurpose = null;
+                            }),
+                            icon: Icons.category_rounded,
+                          ),
+                          SizedBox(height: gap),
+                          _buildDropdown(
+                            label: "Loan Purpose",
+                            value: _selectedPurpose,
+                            items: _currentPurposes,
+                            enabled: _selectedLoanType != null,
+                            onChanged: (v) => setState(() => _selectedPurpose = v),
+                            icon: Icons.task_alt_rounded,
+                          ),
+                          if (_showFloorsDropdown) ...[
+                            SizedBox(height: gap),
+                            _buildDropdown(
+                              label: "Number of Floors",
+                              value: _selectedFloors,
+                              items: _floors,
+                              onChanged: (v) => setState(() => _selectedFloors = v),
+                              icon: Icons.layers_rounded,
+                            ),
+                          ],
+                        ]),
+                        SizedBox(height: pad),
+
+                        _buildSectionHeader("Asset & Agreement Details"),
+                        _buildCard([
+                          _buildTextField(
+                            controller: _addressController,
+                            label: "Beneficiary Address",
+                            icon: Icons.location_on_outlined,
+                            validator: (v) => v!.isEmpty ? "Required" : null,
+                          ),
+                          SizedBox(height: gap),
+                          _buildTextField(
+                            controller: _assetController,
+                            label: "Asset Purchased",
+                            icon: Icons.shopping_cart_outlined,
+                            validator: (v) => v!.isEmpty ? "Required" : null,
+                          ),
+                          SizedBox(height: gap),
+                          _buildUploadCard(),
+                        ]),
+                        SizedBox(height: pad),
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _submitForm,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF138808),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 4,
+                              shadowColor: const Color(0xFF138808).withOpacity(0.4),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            )
+                                : Text(
+                              "Create & Send SMS",
+                              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 20),
-            ],
+            ),
           ),
-        ),
-      ),
+          bottomNavigationBar: OfficerNavBar(currentIndex: 1, officerId: widget.officerId),
+        );
+      },
     );
   }
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12, left: 4),
-      child: Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey[600], letterSpacing: 0.5)),
+      padding: const EdgeInsets.only(bottom: 10, left: 2),
+      child: Text(
+        title,
+        style: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF6B7280),
+          letterSpacing: 0.2,
+        ),
+      ),
     );
   }
 
   Widget _buildCard(List<Widget> children) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(children: children),
     );
   }
 
-  Widget _buildTextField({ required TextEditingController controller, required String label, required IconData icon, TextInputType inputType = TextInputType.text, List<TextInputFormatter>? formatters, String? Function(String?)? validator}) {
-    return TextFormField(controller: controller, keyboardType: inputType, inputFormatters: formatters, validator: validator, decoration: InputDecoration(labelText: label, labelStyle: GoogleFonts.inter(fontSize: 14, color: Colors.grey[500]), prefixIcon: Icon(icon, color: _accent, size: 22), filled: true, fillColor: const Color(0xFFF9FAFB), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _accent, width: 1.5))));
+  InputDecoration _compactDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: GoogleFonts.inter(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w600),
+      prefixIcon: Icon(icon, color: _accent, size: 20),
+      prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+      isDense: true,
+      filled: true,
+      fillColor: const Color(0xFFF9FAFB),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _accent, width: 1.5),
+      ),
+    );
   }
 
-  Widget _buildDropdown({ required String label, required String? value, required List<String> items, required ValueChanged<String?>? onChanged, required IconData icon, bool enabled = true}) {
-    return DropdownButtonFormField<String>(value: value, isExpanded: true, menuMaxHeight: 320, items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, overflow: TextOverflow.ellipsis, maxLines: 1, style: GoogleFonts.inter()))).toList(), onChanged: enabled ? onChanged : null, validator: (v) => (enabled && v == null) ? "Required" : null, icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22), decoration: InputDecoration(labelText: label, labelStyle: GoogleFonts.inter(fontSize: 14, color: Colors.grey[500]), prefixIcon: Icon(icon, color: _accent, size: 22), filled: true, fillColor: const Color(0xFFF9FAFB), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _accent, width: 1.5)), disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200))));
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType inputType = TextInputType.text,
+    List<TextInputFormatter>? formatters,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: inputType,
+      inputFormatters: formatters,
+      validator: validator,
+      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+      decoration: _compactDecoration(label, icon),
+    );
   }
 
-  // New file picker widget
-  Widget _buildFilePicker() {
+  Widget _buildDropdown({
+    required String label,
+    required String? value,
+    required List<String> items,
+    required ValueChanged<String?>? onChanged,
+    required IconData icon,
+    bool enabled = true,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      isExpanded: true,
+      menuMaxHeight: 320,
+      items: items
+          .map(
+            (e) => DropdownMenuItem(
+          value: e,
+          child: Text(
+            e,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ),
+      )
+          .toList(),
+      onChanged: enabled ? onChanged : null,
+      validator: (v) => (enabled && v == null) ? "Required" : null,
+      icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22),
+      decoration: _compactDecoration(label, icon).copyWith(
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUploadCard() {
     return InkWell(
       onTap: _pickLoanAgreement,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: _loanAgreementFile != null ? Colors.green : Colors.grey.shade300)),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _loanAgreementFile != null ? Colors.green : Colors.grey.shade300,
+            style: BorderStyle.solid,
+          ),
+        ),
+        child: Column(
           children: [
-            Icon(_loanAgreementFile != null ? Icons.check_circle : Icons.attach_file_rounded, color: _loanAgreementFile != null ? Colors.green : _accent, size: 24),
-            const SizedBox(width: 12),
-            Flexible(child: Text(_loanAgreementFile != null ? _loanAgreementFile!.path.split('/').last : "Attach Loan Agreement", style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.black87, fontSize: 14), overflow: TextOverflow.ellipsis)),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _loanAgreementFile != null ? Colors.green.withOpacity(0.1) : _accent.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _loanAgreementFile != null ? Icons.check : Icons.upload_file_rounded,
+                color: _loanAgreementFile != null ? Colors.green : _accent,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _loanAgreementFile != null ? "Agreement Attached" : "Upload Loan Agreement",
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.black87),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _loanAgreementFile != null ? _loanAgreementFile!.path.split('/').last : "PDF or Image (Max 5MB)",
+              style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500]),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
           ],
         ),
       ),
