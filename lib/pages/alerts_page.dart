@@ -1,11 +1,13 @@
 // ===============================
 // ALERTS / NOTIFICATIONS PAGE
-// Premium UI – Integrated with backend
+// Dynamic from backend (/user?id=)
 // ===============================
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class AlertsPage extends StatefulWidget {
   final String userId;
@@ -16,8 +18,8 @@ class AlertsPage extends StatefulWidget {
 }
 
 class _AlertsPageState extends State<AlertsPage> {
-  List<Map<String, dynamic>> _alerts = [];
   bool _loading = true;
+  List<Map<String, dynamic>> _alerts = [];
 
   @override
   void initState() {
@@ -25,48 +27,129 @@ class _AlertsPageState extends State<AlertsPage> {
     _loadAlerts();
   }
 
+  // =====================================
+  // LOAD FROM BACKEND
+  // GET /user?id=<id>
+  // =====================================
   Future<void> _loadAlerts() async {
     try {
       setState(() => _loading = true);
 
-      // TODO: Replace with your backend API call
-      await Future.delayed(const Duration(milliseconds: 500));
+      final url = Uri.parse("http://192.168.0.242:5000/user?id=${widget.userId}");
+      final res = await http.get(url);
 
-      // Example backend-style data
-      _alerts = [
-        {
-          "title": "Loan Approved",
-          "message": "Your loan #1821 has been approved by NBCFDC.",
-          "time": DateTime.now().subtract(const Duration(minutes: 10)),
-          "type": "success",
-          "read": false
-        },
-        {
-          "title": "Document Verified",
-          "message": "Asset front-view image successfully verified.",
-          "time": DateTime.now().subtract(const Duration(hours: 2)),
-          "type": "verify",
-          "read": true
-        },
-        {
-          "title": "New Step Pending",
-          "message": "A new verification step has been added to your request.",
-          "time": DateTime.now().subtract(const Duration(days: 1)),
-          "type": "pending",
-          "read": true
-        },
-      ];
+      if (res.statusCode != 200) {
+        setState(() => _loading = false);
+        return;
+      }
+
+      final parsed = json.decode(res.body);
+      final List loans = parsed["data"] ?? [];
+
+      List<Map<String, dynamic>> out = [];
+
+      for (var loan in loans) {
+        final loanId = loan["loan_id"];
+
+        // Loan-level status
+        String loanStatus = (loan["status"] ?? "").toLowerCase();
+        if (loanStatus == "verified") {
+          out.add(_makeAlert(
+            title: "Loan Verified",
+            msg: "Your loan #$loanId was successfully verified.",
+            type: "success",
+            time: DateTime.now(),
+          ));
+        } else if (loanStatus == "rejected") {
+          out.add(_makeAlert(
+            title: "Loan Rejected",
+            msg: "Your loan #$loanId has been rejected.",
+            type: "error",
+            time: DateTime.now(),
+          ));
+        }
+
+        // Process-level status
+        for (var p in (loan["process"] ?? [])) {
+          final status = (p["status"] ?? "").toLowerCase();
+          final updatedAt = p["uploaded_at"];
+          DateTime t = DateTime.now();
+          if (updatedAt != null) {
+            try {
+              t = DateTime.parse(updatedAt);
+            } catch (_) {}
+          }
+
+          if (p["file_id"] != null) {
+            out.add(_makeAlert(
+              title: "Media Uploaded",
+              msg: "Uploaded: ${p["what_to_do"]}",
+              type: "pending",
+              time: t,
+            ));
+          }
+
+          if (status == "verified") {
+            out.add(_makeAlert(
+              title: "Document Verified",
+              msg: "${p["what_to_do"]} is verified.",
+              type: "verify",
+              time: t,
+            ));
+          }
+
+          if (status == "rejected") {
+            out.add(_makeAlert(
+              title: "Document Rejected",
+              msg: "${p["what_to_do"]} was rejected by officer.",
+              type: "error",
+              time: t,
+            ));
+          }
+
+          if (status == "pending_review") {
+            out.add(_makeAlert(
+              title: "Pending Review",
+              msg: "${p["what_to_do"]} is waiting for officer review.",
+              type: "pending",
+              time: t,
+            ));
+          }
+        }
+      }
+
+      // Sort by latest first
+      out.sort((a, b) => b["time"].compareTo(a["time"]));
 
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _alerts = out;
+          _loading = false;
+        });
       }
-    } catch (_) {
+    } catch (e) {
       setState(() => _loading = false);
     }
   }
 
+  // BUILD NOTIFICATION OBJECT
+  Map<String, dynamic> _makeAlert({
+    required String title,
+    required String msg,
+    required String type,
+    required DateTime time,
+  }) {
+    return {
+      "title": title,
+      "message": msg,
+      "type": type,
+      "time": time,
+      "read": false,
+    };
+  }
+
   // -----------------------------------------
-  // Icon by notification type
+  // ICON FOR TYPE
   // -----------------------------------------
   IconData _iconForType(String type) {
     switch (type) {
@@ -83,9 +166,7 @@ class _AlertsPageState extends State<AlertsPage> {
     }
   }
 
-  // -----------------------------------------
-  // Color badge by type
-  // -----------------------------------------
+  // COLOR FOR TYPE
   Color _colorForType(String type) {
     switch (type) {
       case "success":
@@ -102,7 +183,7 @@ class _AlertsPageState extends State<AlertsPage> {
   }
 
   // -----------------------------------------
-  // Build Single Notification Card
+  // ALERT CARD UI
   // -----------------------------------------
   Widget _alertCard(Map<String, dynamic> a) {
     final icon = _iconForType(a["type"]);
@@ -115,72 +196,52 @@ class _AlertsPageState extends State<AlertsPage> {
       decoration: BoxDecoration(
         color: a["read"] ? Colors.white : const Color(0xFFF0F6FF),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: col.withOpacity(0.25),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(
-          color: a["read"] ? Colors.grey.shade200 : col.withOpacity(0.3),
-        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: col.withOpacity(0.12),
+            backgroundColor: col.withOpacity(0.15),
             child: Icon(icon, color: col),
           ),
           const SizedBox(width: 14),
 
-          // TEXT SECTION
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  a["title"],
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
-                ),
+                Text(a["title"],
+                    style: GoogleFonts.inter(
+                        fontSize: 15, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
-                Text(
-                  a["message"],
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: Colors.grey[700],
-                  ),
-                ),
-
+                Text(a["message"],
+                    style: GoogleFonts.inter(fontSize: 13, color: Colors.black87)),
                 const SizedBox(height: 10),
-
                 Text(
                   DateFormat("dd MMM yyyy • hh:mm a").format(a["time"]),
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.grey[500],
-                  ),
+                  style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
             ),
           ),
 
-          // READ DOT
           if (!a["read"])
             Container(
               width: 10,
               height: 10,
-              decoration: BoxDecoration(
-                color: col,
-                shape: BoxShape.circle,
-              ),
-            ),
+              decoration: BoxDecoration(color: col, shape: BoxShape.circle),
+            )
         ],
       ),
     );
@@ -194,26 +255,23 @@ class _AlertsPageState extends State<AlertsPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F9FC),
       appBar: AppBar(
-        title: Text("Alerts", style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
         backgroundColor: Colors.white,
-        elevation: 0.4,
+        elevation: 0.3,
+        title: Text("Alerts",
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
       ),
-
       body: RefreshIndicator(
         onRefresh: _loadAlerts,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _alerts.isEmpty
             ? Center(
-          child: Text(
-            "No alerts available",
-            style: GoogleFonts.inter(fontSize: 15),
-          ),
-        )
+            child: Text("No alerts yet",
+                style: GoogleFonts.inter(fontSize: 15)))
             : ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: _alerts.length,
-          itemBuilder: (context, i) => _alertCard(_alerts[i]),
+          itemBuilder: (_, i) => _alertCard(_alerts[i]),
         ),
       ),
     );

@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/services/bank_service.dart';
 import 'package:loan2/pages/help_support_page.dart';
 import 'package:loan2/widgets/officer_nav_bar.dart';
+import 'package:loan2/services/app_theme.dart';
+import 'package:loan2/widgets/app_profile_menu.dart';
 
 class ProfileSettingsPage extends StatefulWidget {
   final String officerId;
@@ -21,7 +23,6 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
   late Future<Map<String, dynamic>> _f;
 
   bool _notifs = true;
-  bool _dark = false;
   String _lang = "English";
 
   @override
@@ -98,14 +99,13 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = _dark;
-
-    final bg = isDark ? const Color(0xFF0B1220) : const Color(0xFFF6F7FB);
-    final card = isDark ? const Color(0xFF0F1B2D) : Colors.white;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg    = Theme.of(context).scaffoldBackgroundColor;
+    final card  = Theme.of(context).cardColor;
     final border = isDark ? const Color(0xFF1F2A44) : const Color(0xFFF1F5F9);
     final titleC = isDark ? Colors.white : const Color(0xFF111827);
-    final subC = isDark ? Colors.white70 : Colors.grey.shade700;
-    final soft = isDark ? const Color(0xFF12233D) : const Color(0xFFF8FAFC);
+    final subC   = isDark ? Colors.white70 : Colors.grey.shade700;
+    final soft   = isDark ? const Color(0xFF12233D) : const Color(0xFFF8FAFC);
 
     return Scaffold(
       backgroundColor: bg,
@@ -114,33 +114,11 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          "My Profile",
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: Colors.white),
-        ),
+        title: Text("My Profile",
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: Colors.white)),
+        // ⬇️ replace the old info button with the profile menu
         actions: [
-          IconButton(
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  title: Text("About", style: GoogleFonts.poppins(fontWeight: FontWeight.w900)),
-                  content: Text(
-                    "Nyay Sahayak\nOfficer dashboard profile & settings.",
-                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text("Close", style: GoogleFonts.inter(fontWeight: FontWeight.w900)),
-                    )
-                  ],
-                ),
-              );
-            },
-            icon: const Icon(Icons.info_outline_rounded, color: Colors.white),
-          ),
+          AppProfileMenu(officerId: widget.officerId),
           const SizedBox(width: 6),
         ],
         shape: const RoundedRectangleBorder(
@@ -285,16 +263,12 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
         children: [
           const Icon(Icons.wifi_off_rounded, color: Colors.redAccent, size: 34),
           const SizedBox(height: 10),
-          Text(
-            "Couldn’t load profile",
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 16, color: titleC),
-          ),
+          Text("Couldn’t load profile",
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 16, color: titleC)),
           const SizedBox(height: 6),
-          Text(
-            "Check your server/API and try again.",
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: subC),
-          ),
+          Text("Check your server/API and try again.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: subC)),
           const SizedBox(height: 12),
           InkWell(
             borderRadius: BorderRadius.circular(14),
@@ -343,8 +317,10 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 54,
@@ -354,10 +330,12 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Center(
-                  child: Text(
-                    initials,
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w900, color: blue, fontSize: 18),
-                  ),
+                  child: Text(initials,
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w900,
+                        color: blue,
+                        fontSize: 18,
+                      )),
                 ),
               ),
               const SizedBox(width: 12),
@@ -365,12 +343,14 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 16, color: titleC),
-                    ),
+                    Text(name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          color: titleC,
+                        )),
                     const SizedBox(height: 4),
                     Text(
                       place,
@@ -381,6 +361,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
@@ -388,96 +369,76 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: blue.withOpacity(0.18)),
                 ),
-                child: Text(
-                  "Officer",
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: Colors.white),
-                ),
+                child: Text("Officer", style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: Colors.white)),
               ),
             ],
           ),
-          const Spacer(),
-          Row(
-            children: [
-              Expanded(
-                child: _miniInfoCard(
-                  soft: soft,
-                  border: border,
-                  titleC: titleC,
-                  subC: subC,
-                  title: "Officer ID",
-                  value: officerId,
-                  icon: Icons.badge_rounded,
-                  onTap: () => _copy("Officer ID", officerId),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _miniInfoCard(
-                  soft: soft,
-                  border: border,
-                  titleC: titleC,
-                  subC: subC,
-                  title: "Contact",
-                  value: contact,
-                  icon: Icons.call_rounded,
-                  onTap: () => _copy("Contact", contact),
-                ),
-              ),
-            ],
+          const SizedBox(height: 12),
+          _kvLine(
+            icon: Icons.badge_rounded,
+            label: "Officer ID",
+            value: officerId,
+            titleC: titleC,
+            subC: subC,
+            onCopy: () => _copy("Officer ID", officerId),
+          ),
+          const SizedBox(height: 8),
+          _kvLine(
+            icon: Icons.call_rounded,
+            label: "Contact",
+            value: contact,
+            titleC: titleC,
+            subC: subC,
+            onCopy: () => _copy("Contact", contact),
           ),
         ],
       ),
     );
   }
 
-  Widget _miniInfoCard({
-    required Color soft,
-    required Color border,
+  Widget _kvLine({
+    required IconData icon,
+    required String label,
+    required String value,
     required Color titleC,
     required Color subC,
-    required String title,
-    required String value,
-    required IconData icon,
-    VoidCallback? onTap,
+    VoidCallback? onCopy,
   }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Container(
-        height: 54,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: soft,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: border),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: blue.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: blue, size: 18),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: blue.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: subC)),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w900, color: titleC),
               ),
-              child: Icon(icon, color: blue, size: 18),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: subC)),
-                  const SizedBox(height: 2),
-                  Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w900, color: titleC)),
-                ],
-              ),
-            ),
-            if (onTap != null) Icon(Icons.copy_rounded, size: 16, color: subC),
-          ],
+            ],
+          ),
         ),
-      ),
+        if (onCopy != null)
+          IconButton(
+            icon: Icon(Icons.copy_rounded, size: 16, color: subC),
+            onPressed: onCopy,
+            splashRadius: 18,
+          ),
+      ],
     );
   }
 
@@ -488,11 +449,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: border),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 18, offset: const Offset(0, 10)),
         ],
       ),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -507,11 +464,9 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                 onTap: _openLanguageSheet,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: blue.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text("Language: $_lang", style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: Colors.white)),
+                  decoration: BoxDecoration(color: blue.withOpacity(0.10), borderRadius: BorderRadius.circular(12)),
+                  child: Text("Language: $_lang",
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: Colors.white)),
                 ),
               )
             ],
@@ -545,18 +500,17 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                         _toast(v ? "Notifications enabled" : "Notifications disabled");
                       },
                     ),
-                    _toggleTile(
+                    // SPECIAL dark-mode tile with custom switch colors
+                    _darkModeTile(
                       soft: soft,
                       border: border,
                       titleC: titleC,
                       subC: subC,
-                      title: "Dark Mode",
-                      subtitle: "UI appearance",
-                      icon: Icons.dark_mode_rounded,
-                      value: _dark,
+                      value: AppTheme.isDark,
                       onChanged: (v) {
-                        setState(() => _dark = v);
-                        _toast(v ? "Dark mode ON (profile only)" : "Dark mode OFF");
+                        AppTheme.toggle(v);
+                        setState(() {});
+                        _toast(v ? "Dark mode ON" : "Dark mode OFF");
                       },
                     ),
                     _actionTile(
@@ -660,11 +614,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
     required ValueChanged<bool> onChanged,
   }) {
     return Container(
-      decoration: BoxDecoration(
-        color: soft,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-      ),
+      decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(18), border: Border.all(color: border)),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -674,10 +624,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
               Container(
                 width: 38,
                 height: 38,
-                decoration: BoxDecoration(
-                  color: blue.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                decoration: BoxDecoration(color: blue.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
                 child: Icon(icon, color: blue, size: 20),
               ),
               const SizedBox(width: 10),
@@ -685,35 +632,18 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12.5,
-                        color: titleC,
-                      ),
-                    ),
+                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12.5, color: titleC)),
                     const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                        color: subC,
-                      ),
-                    ),
+                    Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 11, color: subC)),
                   ],
                 ),
               ),
             ],
           ),
           const Spacer(),
-          Align(
-            alignment: Alignment.centerRight,
+          Center(
             child: Switch(
               value: value,
               onChanged: onChanged,
@@ -726,6 +656,67 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
     );
   }
 
+  // Dark-mode tile with custom switch colors (thumb white; ON=blue track; OFF=black/white)
+  Widget _darkModeTile({
+    required Color soft,
+    required Color border,
+    required Color titleC,
+    required Color subC,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(18), border: Border.all(color: border)),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(color: blue.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
+                child: const Icon(Icons.dark_mode_rounded, color: blue, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Dark Mode',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12.5, color: titleC)),
+                    const SizedBox(height: 2),
+                    Text('UI appearance',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 11, color: subC)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Center(
+            child: SwitchTheme(
+              data: SwitchThemeData(
+                thumbColor: MaterialStateProperty.resolveWith((_) => Colors.white),
+                trackColor: MaterialStateProperty.resolveWith((states) {
+                  final on = states.contains(MaterialState.selected);
+                  if (on) return blue;                           // ON -> dark blue
+                  return isDark ? Colors.white : Colors.black87; // OFF -> white in dark, black in light
+                }),
+              ),
+              child: Switch(
+                value: value,
+                onChanged: onChanged,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _actionTile({
     required Color soft,
@@ -745,21 +736,14 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(
-          color: soft,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: border),
-        ),
+        decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(18), border: Border.all(color: border)),
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         child: Row(
           children: [
             Container(
               width: 38,
               height: 38,
-              decoration: BoxDecoration(
-                color: iconBg,
-                borderRadius: BorderRadius.circular(14),
-              ),
+              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(14)),
               child: Icon(icon, color: iconColor, size: 20),
             ),
             const SizedBox(width: 10),
@@ -768,9 +752,11 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12.5, color: titleC)),
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12.5, color: titleC)),
                   const SizedBox(height: 2),
-                  Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 11, color: subC)),
+                  Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 11, color: subC)),
                 ],
               ),
             ),

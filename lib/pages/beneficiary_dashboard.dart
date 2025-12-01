@@ -1,17 +1,10 @@
-/// YOUR FULL UPDATED NON-REFRESHING BENEFICIARY DASHBOARD
-/// --------------------------------------------------------
-/// - Permanent bottom nav
-/// - IndexedStack pages
-/// - Only Home has its big header
-/// - Other tabs load normally
-/// --------------------------------------------------------
-
+// lib/pages/beneficiary_dashboard.dart
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import 'package:loan2/pages/login_page.dart';
 import 'package:loan2/pages/alerts_page.dart';
 import 'package:loan2/pages/verification_history_page.dart';
 import 'package:loan2/pages/pending_verification_page.dart';
@@ -21,9 +14,6 @@ import 'package:loan2/services/sync_service.dart';
 import 'package:loan2/services/database_helper.dart';
 import 'package:loan2/pages/loan_detail_screen.dart';
 
-// --------------------------------------------------------------
-// Banner & Services Models
-// --------------------------------------------------------------
 class _BannerItem {
   final String asset;
   final String url;
@@ -38,13 +28,9 @@ class _ServiceItem {
   const _ServiceItem({required this.label, required this.asset, required this.url});
 }
 
-// --------------------------------------------------------------
-// MAIN DASHBOARD
-// --------------------------------------------------------------
 class BeneficiaryDashboard extends StatefulWidget {
   final String userId;
   const BeneficiaryDashboard({super.key, required this.userId});
-
   @override
   State<BeneficiaryDashboard> createState() => _BeneficiaryDashboardState();
 }
@@ -53,7 +39,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
   final BeneficiaryService _service = BeneficiaryService();
 
   int _selectedIndex = 0;
-
   bool isOnline = false;
   int unsyncedCount = 0;
 
@@ -63,14 +48,13 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
   StreamSubscription? _syncSub;
   StreamSubscription? _onlineSub;
 
-  // Banner
   late PageController _bannerController;
   Timer? _bannerTimer;
   int _bannerIndex = 0;
 
   final List<_BannerItem> _banners = const [
     _BannerItem(asset: 'assets/b_banners/banner1.png', url: 'https://nbcfdc.gov.in/', title: 'NSKFDC'),
-    _BannerItem(asset: 'assets/b_banners/banner2.jpeg', url: 'https://nskfdc.nic.in/', title: 'NSFDC'),
+    _BannerItem(asset: 'assets/b_banners/banner2.png', url: 'https://nskfdc.nic.in/', title: 'NSFDC'),
     _BannerItem(asset: 'assets/b_banners/banner3.png', url: 'https://nsfdc.nic.in/en/schemes/', title: 'NBCFDC'),
     _BannerItem(asset: 'assets/b_banners/banner4.png', url: 'https://www.desw.gov.in/prime-ministers-scholarship-scheme-pmss/', title: 'PMSSS'),
     _BannerItem(asset: 'assets/b_banners/banner5.png', url: 'https://pmajay.dosje.gov.in/', title: 'PM-AJAY'),
@@ -79,10 +63,25 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
   final List<_ServiceItem> _services = const [
     _ServiceItem(label: 'NSKFDC', asset: 'assets/services/nskfdc.png', url: 'https://nskfdc.nic.in/en/node/add/loan-application/'),
     _ServiceItem(label: 'NSFDC', asset: 'assets/services/nsfdc.png', url: 'https://nsfdc.nic.in/en/form/'),
-    _ServiceItem(label: 'NBCFDC', asset: 'assets/services/nbcfdc.png', url: 'https://nbcfdc.gov.in/nbcfdc/web/howapply/'),
-    _ServiceItem(label: 'PMSSS', asset: 'assets/services/pmss.png', url: 'https://www.desw.gov.in/prime-ministers-scholarship-scheme-pmss/'),
-    _ServiceItem(label: 'PM-AJAY', asset: 'assets/services/pmajay.png', url: 'https://www.myscheme.gov.in/schemes/ab-pmjay/'),
+    _ServiceItem(label: 'NBCFDC', asset: 'assets/services/nbcfdc.png', url: 'https://nbcfdc.gov.in/'),
+    _ServiceItem(label: 'PMSSS', asset: 'assets/services/pmsss.png', url: 'https://www.desw.gov.in/prime-ministers-scholarship-scheme-pmss'),
+    _ServiceItem(label: 'PM-AJAY', asset: 'assets/services/pmajay.png', url: 'https://socialjustice.gov.in/'),
   ];
+
+  bool _isPending(String? s) {
+    final t = (s ?? '').toLowerCase().replaceAll(' ', '_');
+    return t.isEmpty ||
+        t == 'pending' ||
+        t == 'not_verified' ||
+        t == 'in_review' ||
+        t == 'pending_review' ||
+        t == 'in_progress' ||
+        t == 'submitted';
+  }
+
+  List<BeneficiaryLoan> _onlyPending(List<BeneficiaryLoan> loans) {
+    return loans.where((loan) => loan.processes.any((st) => _isPending(st.status))).toList();
+  }
 
   @override
   void initState() {
@@ -97,11 +96,12 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
       _updateUnsyncedCount();
     });
 
-    _onlineSub = SyncService.onOnlineStatusChanged.listen((online) {
-      if (mounted) setState(() => isOnline = online);
+    _onlineSub = SyncService.onOnlineStatusChanged.listen((online) async {
+      if (!mounted) return;
+      setState(() => isOnline = online);
       if (online) {
-        _loadLoans();
-        _updateUnsyncedCount();
+        await _loadLoans();
+        await _updateUnsyncedCount();
       }
     });
   }
@@ -130,7 +130,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     try {
       final data = await _service.fetchUserLoans(widget.userId);
       final filtered = data.where((l) => (l.userId ?? "") == widget.userId).toList();
-
       if (mounted) {
         setState(() {
           _loans = filtered;
@@ -162,49 +161,32 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     } catch (_) {}
   }
 
-  // ---------------------------------------------------------------
-  // NAVIGATION — IndexedStack (NO REFRESH)
-  // ---------------------------------------------------------------
-  void _selectTab(int index) {
-    if (!mounted) return;
-    setState(() => _selectedIndex = index);
-  }
+  void _selectTab(int index) => setState(() => _selectedIndex = index);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F9FC),
+    final pendingLoans = _onlyPending(_loans);
 
-      floatingActionButton: _selectedIndex == 0
-          ? Padding(
-        padding: const EdgeInsets.only(bottom: 82),
-        child: FloatingActionButton.extended(
-          onPressed: () => _openUrl("tel:9150462438"),
-          backgroundColor: const Color(0xFF2EA46B),
-          icon: const Icon(Icons.call),
-          label: const Text("Call Support"),
+    return WillPopScope(
+      // Block system back on Dashboard so it never reveals Login underneath
+      onWillPop: () async => false,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF6F9FC),
+        bottomNavigationBar: _buildBottomNav(),
+        body: IndexedStack(
+          index: _selectedIndex,
+          children: [
+            _homeTab(),
+            PendingVerificationPage(userId: widget.userId, loans: pendingLoans),
+            VerificationHistoryPage(userId: widget.userId),
+            AlertsPage(userId: widget.userId),
+            _helpTab(),
+          ],
         ),
-      )
-          : null,
-
-      bottomNavigationBar: _buildBottomNav(),
-
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          _homeTab(),
-          PendingVerificationPage(userId: widget.userId, loans: _loans),
-          VerificationHistoryPage(userId: widget.userId),
-          AlertsPage(userId: widget.userId),
-          _helpTab(),
-        ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------
-  // HOME TAB ONLY → Has header + loan cards
-  // ---------------------------------------------------------------
   Widget _homeTab() {
     return Column(
       children: [
@@ -214,9 +196,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     );
   }
 
-  // ---------------------------------------------------------------
-  // HELP TAB SIMPLE PAGE
-  // ---------------------------------------------------------------
   Widget _helpTab() {
     return Scaffold(
       appBar: AppBar(title: const Text("Help & Support")),
@@ -224,9 +203,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     );
   }
 
-  // ---------------------------------------------------------------
-  // HEADER — Only for home
-  // ---------------------------------------------------------------
   Widget _header() {
     return Container(
       padding: EdgeInsets.only(
@@ -264,18 +240,59 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
                 ),
               ),
               const Icon(Icons.notifications_none, color: Colors.white),
+              const SizedBox(width: 12),
+              PopupMenuButton<String>(
+                onSelected: (v) {
+                  if (v == 'profile') {
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text("Profile"),
+                        content: Text("User ID: ${widget.userId}"),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text("Close"),
+                          )
+                        ],
+                      ),
+                    );
+                  } else if (v == 'logout') {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginPage()),
+                          (route) => false,
+                    );
+                  }
+
+                },
+                color: Colors.white,
+                offset: const Offset(0, 48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'profile',
+                    child: ListTile(leading: Icon(Icons.person), title: Text('Profile')),
+                  ),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: ListTile(leading: Icon(Icons.logout), title: Text('Logout')),
+                  ),
+                ],
+                child: const CircleAvatar(
+                  radius: 18,
+                  backgroundImage: NetworkImage(
+                    "https://www.gravatar.com/avatar/placeholder?s=200&d=robohash",
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),
-
-          // SEARCH BAR
           Container(
             height: 54,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-            ),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
             child: Row(
               children: const [
                 Icon(Icons.search, color: Color(0xFF6B7C9A)),
@@ -290,9 +307,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     );
   }
 
-  // ---------------------------------------------------------------
-  // HOME BODY CONTENT
-  // ---------------------------------------------------------------
   Widget _homeBody() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -312,53 +326,31 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
           const SizedBox(height: 20),
           _requestsHeader(),
           const SizedBox(height: 12),
-          if (_loans.isEmpty) _emptyCard() else ..._loans.map((l) => _loanCard(l)).toList(),
+          if (_loans.isEmpty) _emptyCard() else ..._loans.map(_loanCard),
           const SizedBox(height: 40),
         ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------
-  // CATEGORY ROW
-  // ---------------------------------------------------------------
   Widget _categoryRow() {
     return Row(
       children: [
-        Expanded(
-            child: _categoryTile(
-                icon: Icons.verified_user_outlined,
-                label: "Verification Requests",
-                onTap: () => _selectTab(1))),
+        Expanded(child: _categoryTile(icon: Icons.verified_user_outlined, label: "Requests", onTap: () => _selectTab(1))),
         const SizedBox(width: 12),
-        Expanded(
-            child: _categoryTile(
-                icon: Icons.history,
-                label: "History",
-                onTap: () => _selectTab(2))),
+        Expanded(child: _categoryTile(icon: Icons.history, label: "History", onTap: () => _selectTab(2))),
         const SizedBox(width: 12),
-        Expanded(
-            child: _categoryTile(
-                icon: Icons.notifications_none,
-                label: "Alerts",
-                onTap: () => _selectTab(3))),
+        Expanded(child: _categoryTile(icon: Icons.notifications_none, label: "Alerts", onTap: () => _selectTab(3))),
       ],
     );
   }
 
-  Widget _categoryTile({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
+  Widget _categoryTile({required IconData icon, required String label, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
       child: Container(
         height: 100,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-        ),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -371,9 +363,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     );
   }
 
-  // ---------------------------------------------------------------
-  // BANNERS, SERVICES, REQUESTS, CARDS (same as before)
-  // ---------------------------------------------------------------
   Widget _bannerCarousel() {
     return SizedBox(
       height: 170,
@@ -407,7 +396,7 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
                           fontSize: 15,
                         ),
                       ),
-                    )
+                    ),
                   ],
                 ),
               ),
@@ -422,8 +411,7 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("More Loan Corporations and Schemes",
-            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16)),
+        Text("More Loan Corporations and Schemes", style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16)),
         const SizedBox(height: 14),
         SizedBox(
           height: 100,
@@ -438,27 +426,19 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
                 child: Container(
                   width: 78,
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
                   child: Column(
                     children: [
                       Image.asset(s.asset, height: 38),
                       const SizedBox(height: 6),
-                      Text(
-                        s.label,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        style: GoogleFonts.inter(fontSize: 11),
-                      ),
+                      Text(s.label, textAlign: TextAlign.center, maxLines: 2, style: GoogleFonts.inter(fontSize: 11)),
                     ],
                   ),
                 ),
               );
             },
           ),
-        )
+        ),
       ],
     );
   }
@@ -467,21 +447,17 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text("My Requests",
-            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
-        TextButton(onPressed: () {}, child: const Text("View all"))
+        Text("My Requests", style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
+        TextButton(onPressed: () => _selectTab(1), child: const Text("View all")),
       ],
     );
   }
 
   Widget _emptyCard() {
     return Container(
-      width: double.infinity,
       height: 140,
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-      child: const Center(
-        child: Text("No active loans found"),
-      ),
+      child: const Center(child: Text("No active loans found")),
     );
   }
 
@@ -492,7 +468,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
 
     Color col = Colors.orange;
     String status = "Pending";
-
     if (percent == 100) {
       col = Colors.green;
       status = "Verified";
@@ -506,10 +481,7 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => LoanDetailScreen(loan: loan)),
-          );
+          Navigator.push(context, MaterialPageRoute(builder: (_) => LoanDetailScreen(loan: loan)));
         },
         child: Container(
           padding: const EdgeInsets.all(16),
@@ -520,9 +492,10 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
               Row(
                 children: [
                   const CircleAvatar(
-                      radius: 22,
-                      backgroundColor: Color(0xFFEFF6FF),
-                      child: Icon(Icons.inventory_2_outlined, color: Color(0xFF1F6FEB))),
+                    radius: 22,
+                    backgroundColor: Color(0xFFEFF6FF),
+                    child: Icon(Icons.inventory_2_outlined, color: Color(0xFF1F6FEB)),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -535,14 +508,14 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                        color: col.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(12)),
-                    child: Text(status, style: GoogleFonts.inter(color: col, fontWeight: FontWeight.w700)),
+                    decoration: BoxDecoration(color: col.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+                    child: Text(
+                      status,
+                      style: GoogleFonts.inter(color: col, fontWeight: FontWeight.w700),
+                    ),
                   )
                 ],
               ),
-
               const SizedBox(height: 14),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -552,7 +525,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
                 ],
               ),
               const SizedBox(height: 6),
-
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: LinearProgressIndicator(
@@ -569,9 +541,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
     );
   }
 
-  // ---------------------------------------------------------------
-  // BOTTOM NAVIGATION
-  // ---------------------------------------------------------------
   Widget _buildBottomNav() {
     final items = [
       {'icon': Icons.home_outlined, 'label': 'Home'},
@@ -594,7 +563,6 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: List.generate(items.length, (i) {
             final active = i == _selectedIndex;
-
             return GestureDetector(
               onTap: () => _selectTab(i),
               child: AnimatedContainer(
@@ -624,19 +592,13 @@ class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
                         ]
                             : [],
                       ),
-                      child: Icon(
-                        items[i]['icon'] as IconData,
-                        color: active ? Colors.white : Colors.grey[700],
-                      ),
+                      child: Icon(items[i]['icon'] as IconData, color: active ? Colors.white : Colors.grey[700]),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       items[i]['label'] as String,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: active ? const Color(0xFF1F6FEB) : Colors.grey[600],
-                      ),
-                    )
+                      style: GoogleFonts.inter(fontSize: 11, color: active ? const Color(0xFF1F6FEB) : Colors.grey[600]),
+                    ),
                   ],
                 ),
               ),

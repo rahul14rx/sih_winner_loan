@@ -39,6 +39,7 @@ class _LoanRow {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
+  // Keep brand accents
   static const _accent = Color(0xFF1E5AA8);
   static const double _headerRadius = 25;
 
@@ -165,98 +166,116 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   void _openLoanFilter() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = isDark ? const Color(0xFF0F1B2D) : Colors.white;
+    final border = isDark ? const Color(0xFF1F2A44) : Colors.grey.shade300;
+    final textC = isDark ? Colors.white : Colors.black87;
+
     final temp = Set<String>.from(_selectedSchemes);
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheet) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    height: 5,
-                    width: 42,
-                    decoration: BoxDecoration(
-                      color: Colors.black12,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Loan Schemes",
-                      style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ..._schemeOptions.map((s) {
-                    final checked = temp.contains(s);
-                    return CheckboxListTile(
-                      value: checked,
-                      onChanged: (v) {
-                        setSheet(() {
-                          if (v == true) {
-                            temp.add(s);
-                          } else {
-                            temp.remove(s);
-                          }
-                        });
-                      },
-                      activeColor: const Color(0xFFFF9933),
-                      title: Text(s, style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                    );
-                  }),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => setSheet(() => temp.clear()),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: Text("Clear", style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                        ),
+        return Theme(
+          data: Theme.of(ctx).copyWith(
+            checkboxTheme: CheckboxThemeData(
+              fillColor: WidgetStatePropertyAll(const Color(0xFFFF9933)),
+              side: BorderSide(color: border),
+            ),
+            textTheme: GoogleFonts.interTextTheme(Theme.of(ctx).textTheme).apply(
+              bodyColor: textC,
+              displayColor: textC,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: StatefulBuilder(
+              builder: (ctx2, setSheet) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      height: 5,
+                      width: 42,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white10 : Colors.black12,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            setState(() {
-                              _selectedSchemes
-                                ..clear()
-                                ..addAll(temp);
-                            });
-                            Navigator.pop(ctx);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFF9933),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 0,
-                          ),
-                          child: Text("Apply", style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                        ),
+                    ),
+                    const SizedBox(height: 14),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Loan Schemes",
+                        style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: textC),
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
+                    ),
+                    const SizedBox(height: 10),
+                    ..._schemeOptions.map((s) {
+                      final checked = temp.contains(s);
+                      return CheckboxListTile(
+                        value: checked,
+                        onChanged: (v) {
+                          setSheet(() {
+                            if (v == true) {
+                              temp.add(s);
+                            } else {
+                              temp.remove(s);
+                            }
+                          });
+                        },
+                        activeColor: const Color(0xFFFF9933),
+                        title: Text(s, style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: textC)),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => setSheet(() => temp.clear()),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: border),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: Text("Clear", style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: textC)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _selectedSchemes
+                                  ..clear()
+                                  ..addAll(temp);
+                              });
+                              Navigator.pop(ctx);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF9933),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            child: Text("Apply", style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
         );
       },
     );
@@ -268,18 +287,25 @@ class _HistoryPageState extends State<HistoryPage> {
     required Color activeColor,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = isDark ? const Color(0xFF0F1B2D) : Colors.white;
+    final border = isDark ? const Color(0xFF253454) : Colors.grey.shade300;
+    final textC = isDark ? Colors.white : Colors.black87;
+
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? activeColor : Colors.white,
+          color: selected ? activeColor : card,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: selected ? activeColor : Colors.grey.shade300),
-          boxShadow: [
+          border: Border.all(color: selected ? activeColor : border),
+          boxShadow: isDark
+              ? []
+              : [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
+              color: Colors.black.withOpacity(0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
@@ -289,7 +315,7 @@ class _HistoryPageState extends State<HistoryPage> {
           label,
           style: GoogleFonts.inter(
             fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : Colors.black87,
+            color: selected ? Colors.white : textC,
           ),
         ),
       ),
@@ -297,7 +323,14 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Widget _loanCard(_LoanRow l) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = isDark ? const Color(0xFF0F1B2D) : Colors.white;
+    final border = isDark ? const Color(0xFF1F2A44) : Colors.grey.shade200;
+    final textPri = isDark ? Colors.white : Colors.black87;
+    final textSec = isDark ? Colors.white70 : Colors.grey[700];
+
     final isVerified = l.status.toLowerCase() == "verified";
+    final badgeColor = isVerified ? Colors.green : Colors.red;
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -311,24 +344,26 @@ class _HistoryPageState extends State<HistoryPage> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: card,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
+          boxShadow: isDark
+              ? []
+              : [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: Colors.black.withOpacity(0.04),
               blurRadius: 14,
               offset: const Offset(0, 6),
             )
           ],
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: border),
         ),
         child: Row(
           children: [
             Container(
               height: 44,
               width: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF9933).withValues(alpha: 0.12),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFF1E6),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.receipt_long_rounded, color: Color(0xFFFF9933)),
@@ -340,21 +375,21 @@ class _HistoryPageState extends State<HistoryPage> {
                 children: [
                   Text(
                     l.applicantName,
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 15),
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 15, color: textPri),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
                     "ID: ${l.loanId}  •  ₹${l.amount.toStringAsFixed(0)}  •  ${l.loanType}",
-                    style: GoogleFonts.inter(fontSize: 12.5, color: Colors.grey[700]),
+                    style: GoogleFonts.inter(fontSize: 12.5, color: textSec),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     "Applied: ${l.dateApplied}${l.scheme.isNotEmpty ? "  •  ${l.scheme}" : ""}",
-                    style: GoogleFonts.inter(fontSize: 12.5, color: Colors.grey[700]),
+                    style: GoogleFonts.inter(fontSize: 12.5, color: textSec),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -365,17 +400,15 @@ class _HistoryPageState extends State<HistoryPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: (isVerified ? Colors.green : Colors.red).withValues(alpha: 0.12),
+                color: badgeColor.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: (isVerified ? Colors.green : Colors.red).withValues(alpha: 0.25),
-                ),
+                border: Border.all(color: badgeColor.withOpacity(0.25)),
               ),
               child: Text(
                 isVerified ? "accepted" : "rejected",
                 style: GoogleFonts.inter(
                   fontWeight: FontWeight.w800,
-                  color: isVerified ? Colors.green[800] : Colors.red[700],
+                  color: isVerified ? Colors.green[300] : Colors.red[300],
                 ),
               ),
             ),
@@ -387,10 +420,17 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final card = isDark ? const Color(0xFF0F1B2D) : Colors.white;
+    final border = isDark ? const Color(0xFF1F2A44) : Colors.grey.shade200;
+    final textPri = isDark ? Colors.white : Colors.black87;
+    final textSec = isDark ? Colors.white70 : Colors.grey[600];
+
     final list = _filtered;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: bg,
       appBar: AppBar(
         title: Text(
           "History",
@@ -420,15 +460,18 @@ class _HistoryPageState extends State<HistoryPage> {
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
         child: Column(
           children: [
+            // Search
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: card,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [
+                border: Border.all(color: border),
+                boxShadow: isDark
+                    ? []
+                    : [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
+                    color: Colors.black.withOpacity(0.03),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   )
@@ -436,14 +479,15 @@ class _HistoryPageState extends State<HistoryPage> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.search_rounded, color: Colors.grey[600]),
+                  Icon(Icons.search_rounded, color: textSec),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
                       controller: _q,
+                      style: GoogleFonts.inter(color: textPri),
                       decoration: InputDecoration(
                         hintText: "Search by name / loan id / type...",
-                        hintStyle: GoogleFonts.inter(color: Colors.grey[500]),
+                        hintStyle: GoogleFonts.inter(color: textSec),
                         border: InputBorder.none,
                       ),
                     ),
@@ -451,13 +495,13 @@ class _HistoryPageState extends State<HistoryPage> {
                   if (_q.text.isNotEmpty)
                     IconButton(
                       onPressed: () => _q.clear(),
-                      icon: const Icon(Icons.close_rounded),
-                      color: Colors.grey[600],
+                      icon: Icon(Icons.close_rounded, color: textSec),
                     ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
+            // Filters row
             Row(
               children: [
                 Expanded(
@@ -467,12 +511,14 @@ class _HistoryPageState extends State<HistoryPage> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: card,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.grey.shade300),
-                        boxShadow: [
+                        border: Border.all(color: border),
+                        boxShadow: isDark
+                            ? []
+                            : [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
+                            color: Colors.black.withOpacity(0.03),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           )
@@ -484,10 +530,10 @@ class _HistoryPageState extends State<HistoryPage> {
                           const SizedBox(width: 8),
                           Text(
                             _selectedSchemes.isEmpty ? "Loan" : "Loan (${_selectedSchemes.length})",
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: textPri),
                           ),
                           const Spacer(),
-                          const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
+                          Icon(Icons.keyboard_arrow_down_rounded, color: textSec),
                         ],
                       ),
                     ),
@@ -510,6 +556,7 @@ class _HistoryPageState extends State<HistoryPage> {
               ],
             ),
             const SizedBox(height: 12),
+            // List
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
@@ -517,7 +564,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   ? Center(
                 child: Text(
                   "No results found",
-                  style: GoogleFonts.inter(color: Colors.grey[600], fontWeight: FontWeight.w600),
+                  style: GoogleFonts.inter(color: textSec, fontWeight: FontWeight.w600),
                 ),
               )
                   : ListView.builder(

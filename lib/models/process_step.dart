@@ -41,23 +41,13 @@ class ProcessStep {
     return ProcessStep(
       id: json['id']?.toString() ?? '',
       processId: int.tryParse(json['process_id']?.toString() ?? '0') ?? 0,
-
-      whatToDo: json['what_to_do'] ?? json['whatToDo'] ?? json['what_to_do'],
-
+      whatToDo: json['what_to_do'] ?? json['whatToDo'],
       dataType: json['data_type'] ?? json['dataType'],
-
       fileId: json['file_id']?.toString(),
       mediaUrl: json['media_url']?.toString(),
-
       status: json['status']?.toString(),
-
-      utilizationAmount: parseDouble(
-          json['utilization_amount'] ??
-              json['utilizationAmount']
-      ),
-
+      utilizationAmount: parseDouble(json['utilization_amount'] ?? json['utilizationAmount']),
       officerComment: json['officer_comment'] ?? json['officerComment'],
-
       docsAsset: json['docs_asset'] ?? json['docsAsset'],
       docsImage: json['docs_image'] ?? json['docsImage'],
     );
@@ -77,5 +67,44 @@ class ProcessStep {
       'docs_asset': docsAsset,
       'docs_image': docsImage,
     };
+  }
+
+  // -------- Compatibility layer: allow map-style reads safely --------
+  dynamic operator [](String key) {
+    switch (key) {
+      case 'id':
+        return id;
+      case 'process_id':
+      case 'processId':
+        return processId;
+      case 'what_to_do':
+      case 'whatToDo':
+        return whatToDo;
+      case 'data_type':
+      case 'dataType':
+        return dataType;
+      case 'file_id':
+      case 'fileId':
+        return fileId;
+      case 'media_url':
+      case 'mediaUrl':
+        return mediaUrl;
+      case 'status':
+        return status;
+      case 'utilization_amount':
+      case 'utilizationAmount':
+        return utilizationAmount;
+      case 'officer_comment':
+      case 'officerComment':
+        return officerComment;
+      case 'docs_asset':
+      case 'docsAsset':
+        return docsAsset;
+      case 'docs_image':
+      case 'docsImage':
+        return docsImage;
+      default:
+        return null;
+    }
   }
 }

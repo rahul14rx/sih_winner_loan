@@ -11,7 +11,11 @@ import 'package:loan2/pages/help_support_page.dart';
 class OfficerNavBar extends StatelessWidget {
   final int currentIndex;
   final String officerId;
-  const OfficerNavBar({super.key, required this.currentIndex, required this.officerId});
+  const OfficerNavBar({
+    super.key,
+    required this.currentIndex,
+    required this.officerId,
+  });
 
   static const blue = Color(0xFF1E5AA8);
 
@@ -47,10 +51,17 @@ class OfficerNavBar extends StatelessWidget {
     }
   }
 
-
-  Widget _item(BuildContext context, int i, IconData icon, String label) {
+  Widget _item(
+      BuildContext context,
+      int i,
+      IconData icon,
+      String label, {
+        required Color activeColor,
+        required Color inactiveColor,
+        required Color activeBg,
+      }) {
     final active = i == currentIndex;
-    final c = active ? blue : Colors.grey[500];
+    final c = active ? activeColor : inactiveColor;
 
     return Expanded(
       child: InkWell(
@@ -67,7 +78,7 @@ class OfficerNavBar extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: active ? blue.withOpacity(0.12) : Colors.transparent,
+                    color: active ? activeBg : Colors.transparent,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(icon, color: c, size: 24),
@@ -93,15 +104,33 @@ class OfficerNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Background + shadow adapt to theme
+    final bg = isDark ? const Color(0xFF0F1B2D) : Colors.white;
+    final shadow = isDark
+        ? Colors.black.withOpacity(0.45)
+        : Colors.black.withOpacity(0.08);
+
+    // Text/icon colors adapt to theme
+    final inactive = isDark ? Colors.white70 : Colors.grey.shade600;
+
+    // Active pill background adapts (still uses your blue)
+    final activeBg = isDark ? blue.withOpacity(0.22) : blue.withOpacity(0.12);
+
+    // Optional: a subtle top border for light mode & dark mode
+    final borderColor = isDark ? Colors.white10 : Colors.black12;
+
     return SafeArea(
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: bg,
+          border: Border(top: BorderSide(color: borderColor, width: 0.6)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: shadow,
               blurRadius: 18,
               offset: const Offset(0, -8),
             ),
@@ -109,12 +138,66 @@ class OfficerNavBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            _item(context, 0, Icons.home_rounded, "Home"),
-            _item(context, 1, Icons.person_add_alt_1_rounded, "New Beneficiary"),
-            _item(context, 2, Icons.history_rounded, "History"),
-            _item(context, 3, Icons.analytics_rounded, "Reports"),
-            _item(context, 4, Icons.person_outline_rounded, "Profile"),
-            _item(context, 5, Icons.help_outline_rounded, "Help"),
+            _item(
+              context,
+              0,
+              Icons.home_rounded,
+              "Home",
+              activeColor: isDark ? Colors.white : blue,
+
+              inactiveColor: inactive,
+              activeBg: activeBg,
+            ),
+            _item(
+              context,
+              1,
+              Icons.person_add_alt_1_rounded,
+              "New Beneficiary",
+              activeColor: isDark ? Colors.white : blue,
+
+              inactiveColor: inactive,
+              activeBg: activeBg,
+            ),
+            _item(
+              context,
+              2,
+              Icons.history_rounded,
+              "History",
+              activeColor: isDark ? Colors.white : blue,
+
+              inactiveColor: inactive,
+              activeBg: activeBg,
+            ),
+            _item(
+              context,
+              3,
+              Icons.analytics_rounded,
+              "Reports",
+              activeColor: isDark ? Colors.white : blue,
+
+              inactiveColor: inactive,
+              activeBg: activeBg,
+            ),
+            _item(
+              context,
+              4,
+              Icons.person_outline_rounded,
+              "Profile",
+              activeColor: isDark ? Colors.white : blue,
+
+              inactiveColor: inactive,
+              activeBg: activeBg,
+            ),
+            _item(
+              context,
+              5,
+              Icons.help_outline_rounded,
+              "Help",
+              activeColor: isDark ? Colors.white : blue,
+
+              inactiveColor: inactive,
+              activeBg: activeBg,
+            ),
           ],
         ),
       ),

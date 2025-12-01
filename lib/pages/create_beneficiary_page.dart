@@ -8,6 +8,8 @@ import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
 import 'package:loan2/services/sync_service.dart';
 import 'package:loan2/widgets/officer_nav_bar.dart';
+import 'package:loan2/pages/bank_dashboard_page.dart';
+import 'package:loan2/services/theme_ext.dart';
 
 class CreateBeneficiaryPage extends StatefulWidget {
   final String officerId;
@@ -21,23 +23,21 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  // Original Controllers
+  // Controllers
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _amountController = TextEditingController();
   final _loanIdController = TextEditingController();
-
-  // New Controllers for the new fields (kept empty as requested)
   final _addressController = TextEditingController();
   final _assetController = TextEditingController();
 
-  // State for dropdowns
+  // Dropdown state
   String? _selectedScheme;
   String? _selectedLoanType;
   String? _selectedPurpose;
   String? _selectedFloors;
 
-  // State for the new file picker
+  // File picker
   File? _loanAgreementFile;
 
   static const _accent = Color(0xFF1E5AA8);
@@ -103,14 +103,13 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
   };
 
   List<String> get _currentLoanTypes => _loanTypesByScheme[_selectedScheme] ?? const [];
-
   List<String> get _currentPurposes {
     final s = _selectedScheme;
     final c = _selectedLoanType;
     if (s == null || c == null) return const [];
     return _purposeBySchemeCategory[s]?[c] ?? const [];
   }
-  // --- END OF DROPDOWN DATA ---
+  // --- END ---
 
   @override
   void dispose() {
@@ -163,7 +162,6 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       bool isOnline = await SyncService.realInternetCheck();
 
       if (isOnline) {
-        // API CALL IS BACK!
         var request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}bank/beneficiary'));
         request.fields['officer_id'] = widget.officerId;
         request.fields['name'] = name;
@@ -172,11 +170,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         request.fields['loan_id'] = loanId;
         request.fields['scheme'] = scheme;
         request.fields['loan_type'] = loanTypeFinal;
-        request.fields['beneficiary_address'] = address; // NEW FIELD
-        request.fields['asset_purchased'] = asset; // NEW FIELD
+        request.fields['beneficiary_address'] = address;
+        request.fields['asset_purchased'] = asset;
 
         if (docPath != null) {
-          request.files.add(await http.MultipartFile.fromPath('loan_agreement', docPath)); // NEW FILE
+          request.files.add(await http.MultipartFile.fromPath('loan_agreement', docPath));
         }
         if (_showFloorsDropdown && _selectedFloors != null) {
           request.fields['floors'] = _selectedFloors!;
@@ -191,7 +189,6 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
           throw Exception("Server Error: ${response.statusCode} - $respStr");
         }
       } else {
-        // Save offline if no internet
         await _saveOffline(
           name: name,
           phone: phone,
@@ -214,7 +211,6 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         loanType: loanTypeFinal,
         docPath: docPath,
       );
-
       if (mounted) _showSuccessDialog(isOffline: true, error: e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -242,8 +238,10 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     );
   }
 
-
   void _showSuccessDialog({required bool isOffline, String? error}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final subColor = isDark ? const Color(0xFFCBD5E1) : Colors.grey[600];
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -279,7 +277,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                 : "No internet. Data saved locally and will sync automatically.")
                 : "An SMS has been sent to ${_phoneController.text} with login credentials.",
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[600]),
+            style: GoogleFonts.inter(fontSize: 14, color: subColor),
           ),
           actions: [
             SizedBox(
@@ -287,24 +285,15 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.pop(ctx); // close ONLY the dialog
-
                   if (!mounted) return;
 
-                  _formKey.currentState?.reset();
-                  _nameController.clear();
-                  _phoneController.clear();
-                  _amountController.clear();
-                  _loanIdController.clear();
-                  _addressController.clear();
-                  _assetController.clear();
-
-                  setState(() {
-                    _selectedScheme = null;
-                    _selectedLoanType = null;
-                    _selectedPurpose = null;
-                    _selectedFloors = null;
-                    _loanAgreementFile = null;
-                  });
+                  // Navigate to dashboard and clear the stack so we don't come back here
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (_) => BankDashboardPage(officerId: widget.officerId),
+                    ),
+                        (route) => false,
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isOffline ? Colors.orange : const Color(0xFF138808),
@@ -320,186 +309,186 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        final w = c.maxWidth;
-        final pad = w >= 900 ? 28.0 : (w >= 600 ? 20.0 : 16.0);
-        final gap = w >= 600 ? 14.0 : 12.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-        return Scaffold(
-          backgroundColor: const Color(0xFFF6F7FB),
-          appBar: AppBar(
-            backgroundColor: _accent,
-            elevation: 0,
-            centerTitle: true,
-            iconTheme: const IconThemeData(color: Colors.white),
-            title: Text(
-              "Create Beneficiary",
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: Colors.white),
-            ),
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(_headerRadius)),
-            ),
-            clipBehavior: Clip.antiAlias,
-          ),
-          body: SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(pad),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 640),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildSectionHeader("Personal Information"),
-                        _buildCard([
-                          _buildTextField(
-                            controller: _nameController,
-                            label: "Full Name",
-                            icon: Icons.person_outline_rounded,
-                            validator: (v) => v!.isEmpty ? "Required" : null,
-                          ),
-                          SizedBox(height: gap),
-                          _buildTextField(
-                            controller: _phoneController,
-                            label: "Mobile Number",
-                            icon: Icons.phone_android_rounded,
-                            inputType: TextInputType.phone,
-                            formatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(10),
-                            ],
-                            validator: (v) => v!.length != 10 ? "Invalid Number" : null,
-                          ),
-                        ]),
-                        SizedBox(height: pad),
+    final pad = MediaQuery.of(context).size.width >= 900
+        ? 28.0
+        : (MediaQuery.of(context).size.width >= 600 ? 20.0 : 16.0);
+    final gap = MediaQuery.of(context).size.width >= 600 ? 14.0 : 12.0;
 
-                        _buildSectionHeader("Loan Details"),
-                        _buildCard([
-                          _buildTextField(
-                            controller: _loanIdController,
-                            label: "Loan Application ID",
-                            icon: Icons.numbers_rounded,
-                            validator: (v) => v!.isEmpty ? "Required" : null,
-                          ),
-                          SizedBox(height: gap),
-                          _buildTextField(
-                            controller: _amountController,
-                            label: "Sanctioned Amount (₹)",
-                            icon: Icons.currency_rupee_rounded,
-                            inputType: TextInputType.number,
-                            validator: (v) => v!.isEmpty ? "Required" : null,
-                          ),
-                          SizedBox(height: gap),
-                          _buildDropdown(
-                            label: "Government Scheme",
-                            value: _selectedScheme,
-                            items: _schemes,
-                            onChanged: (v) => setState(() {
-                              _selectedScheme = v;
-                              _selectedLoanType = null;
-                              _selectedPurpose = null;
-                              _selectedFloors = null;
-                            }),
-                            icon: Icons.account_balance_rounded,
-                          ),
-                          SizedBox(height: gap),
-                          _buildDropdown(
-                            label: "Loan Category",
-                            value: _selectedLoanType,
-                            items: _currentLoanTypes,
-                            enabled: _selectedScheme != null,
-                            onChanged: (v) => setState(() {
-                              _selectedLoanType = v;
-                              _selectedPurpose = null;
-                            }),
-                            icon: Icons.category_rounded,
-                          ),
-                          SizedBox(height: gap),
-                          _buildDropdown(
-                            label: "Loan Purpose",
-                            value: _selectedPurpose,
-                            items: _currentPurposes,
-                            enabled: _selectedLoanType != null,
-                            onChanged: (v) => setState(() => _selectedPurpose = v),
-                            icon: Icons.task_alt_rounded,
-                          ),
-                          if (_showFloorsDropdown) ...[
-                            SizedBox(height: gap),
-                            _buildDropdown(
-                              label: "Number of Floors",
-                              value: _selectedFloors,
-                              items: _floors,
-                              onChanged: (v) => setState(() => _selectedFloors = v),
-                              icon: Icons.layers_rounded,
-                            ),
-                          ],
-                        ]),
-                        SizedBox(height: pad),
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: _accent,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          "Create Beneficiary",
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: Colors.white),
+        ),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(_headerRadius)),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(pad),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader("Personal Information", isDark),
+                    _buildCard(isDark, [
+                      _buildTextField(
+                        controller: _nameController,
+                        label: "Full Name",
+                        icon: Icons.person_outline_rounded,
+                        validator: (v) => v!.isEmpty ? "Required" : null,
+                      ),
+                      SizedBox(height: gap),
+                      _buildTextField(
+                        controller: _phoneController,
+                        label: "Mobile Number",
+                        icon: Icons.phone_android_rounded,
+                        inputType: TextInputType.phone,
+                        formatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
+                        ],
+                        validator: (v) => v!.length != 10 ? "Invalid Number" : null,
+                      ),
+                    ]),
+                    SizedBox(height: pad),
 
-                        _buildSectionHeader("Asset & Agreement Details"),
-                        _buildCard([
-                          _buildTextField(
-                            controller: _addressController,
-                            label: "Beneficiary Address",
-                            icon: Icons.location_on_outlined,
-                            validator: (v) => v!.isEmpty ? "Required" : null,
-                          ),
-                          SizedBox(height: gap),
-                          _buildTextField(
-                            controller: _assetController,
-                            label: "Asset Purchased",
-                            icon: Icons.shopping_cart_outlined,
-                            validator: (v) => v!.isEmpty ? "Required" : null,
-                          ),
-                          SizedBox(height: gap),
-                          _buildUploadCard(),
-                        ]),
-                        SizedBox(height: pad),
-
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _submitForm,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF138808),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              elevation: 4,
-                              shadowColor: const Color(0xFF138808).withOpacity(0.4),
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                                : Text(
-                              "Create & Send SMS",
-                              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
-                            ),
-                          ),
+                    _buildSectionHeader("Loan Details", isDark),
+                    _buildCard(isDark, [
+                      _buildTextField(
+                        controller: _loanIdController,
+                        label: "Loan Application ID",
+                        icon: Icons.numbers_rounded,
+                        validator: (v) => v!.isEmpty ? "Required" : null,
+                      ),
+                      SizedBox(height: gap),
+                      _buildTextField(
+                        controller: _amountController,
+                        label: "Sanctioned Amount (₹)",
+                        icon: Icons.currency_rupee_rounded,
+                        inputType: TextInputType.number,
+                        validator: (v) => v!.isEmpty ? "Required" : null,
+                      ),
+                      SizedBox(height: gap),
+                      _buildDropdown(
+                        label: "Government Scheme",
+                        value: _selectedScheme,
+                        items: _schemes,
+                        onChanged: (v) => setState(() {
+                          _selectedScheme = v;
+                          _selectedLoanType = null;
+                          _selectedPurpose = null;
+                          _selectedFloors = null;
+                        }),
+                        icon: Icons.account_balance_rounded,
+                      ),
+                      SizedBox(height: gap),
+                      _buildDropdown(
+                        label: "Loan Category",
+                        value: _selectedLoanType,
+                        items: _currentLoanTypes,
+                        enabled: _selectedScheme != null,
+                        onChanged: (v) => setState(() {
+                          _selectedLoanType = v;
+                          _selectedPurpose = null;
+                        }),
+                        icon: Icons.category_rounded,
+                      ),
+                      SizedBox(height: gap),
+                      _buildDropdown(
+                        label: "Loan Purpose",
+                        value: _selectedPurpose,
+                        items: _currentPurposes,
+                        enabled: _selectedLoanType != null,
+                        onChanged: (v) => setState(() => _selectedPurpose = v),
+                        icon: Icons.task_alt_rounded,
+                      ),
+                      if (_showFloorsDropdown) ...[
+                        SizedBox(height: gap),
+                        _buildDropdown(
+                          label: "Number of Floors",
+                          value: _selectedFloors,
+                          items: _floors,
+                          onChanged: (v) => setState(() => _selectedFloors = v),
+                          icon: Icons.layers_rounded,
                         ),
-                        const SizedBox(height: 10),
                       ],
+                    ]),
+                    SizedBox(height: pad),
+
+                    _buildSectionHeader("Asset & Agreement Details", isDark),
+                    _buildCard(isDark, [
+                      _buildTextField(
+                        controller: _addressController,
+                        label: "Beneficiary Address",
+                        icon: Icons.location_on_outlined,
+                        validator: (v) => v!.isEmpty ? "Required" : null,
+                      ),
+                      SizedBox(height: gap),
+                      _buildTextField(
+                        controller: _assetController,
+                        label: "Asset Purchased",
+                        icon: Icons.shopping_cart_outlined,
+                        validator: (v) => v!.isEmpty ? "Required" : null,
+                      ),
+                      SizedBox(height: gap),
+                      _buildUploadCard(isDark),
+                    ]),
+                    SizedBox(height: pad),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _submitForm,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF138808),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 4,
+                          shadowColor: const Color(0xFF138808).withOpacity(0.4),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                            : Text(
+                          "Create & Send SMS",
+                          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                  ],
                 ),
               ),
             ),
           ),
-          bottomNavigationBar: OfficerNavBar(currentIndex: 1, officerId: widget.officerId),
-        );
-      },
+        ),
+      ),
+      bottomNavigationBar: OfficerNavBar(currentIndex: 1, officerId: widget.officerId),
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  // ---------- UI helpers (theme-aware) ----------
+
+  Widget _buildSectionHeader(String title, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10, left: 2),
       child: Text(
@@ -507,20 +496,23 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         style: GoogleFonts.inter(
           fontSize: 13,
           fontWeight: FontWeight.w700,
-          color: const Color(0xFF6B7280),
+          color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF6B7280),
           letterSpacing: 0.2,
         ),
       ),
     );
   }
 
-  Widget _buildCard(List<Widget> children) {
+  Widget _buildCard(bool isDark, List<Widget> children) {
+    final card = Theme.of(context).cardColor;
+    final border = context.appBorder;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -534,19 +526,26 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
   }
 
   InputDecoration _compactDecoration(String label, IconData icon) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = context.appBorder;
+
     return InputDecoration(
       labelText: label,
-      labelStyle: GoogleFonts.inter(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w600),
+      labelStyle: GoogleFonts.inter(
+        fontSize: 13,
+        color: isDark ? const Color(0xFF94A3B8) : Colors.grey[600],
+        fontWeight: FontWeight.w600,
+      ),
       prefixIcon: Icon(icon, color: _accent, size: 20),
       prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
       isDense: true,
       filled: true,
-      fillColor: const Color(0xFFF9FAFB),
+      fillColor: isDark ? const Color(0xFF0B1220) : const Color(0xFFF9FAFB),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade200),
+        borderSide: BorderSide(color: border),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -563,12 +562,18 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     List<TextInputFormatter>? formatters,
     String? Function(String?)? validator,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return TextFormField(
       controller: controller,
       keyboardType: inputType,
       inputFormatters: formatters,
       validator: validator,
-      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+      style: GoogleFonts.inter(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: isDark ? Colors.white : null,
+      ),
       decoration: _compactDecoration(label, icon),
     );
   }
@@ -581,10 +586,13 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     required IconData icon,
     bool enabled = true,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DropdownButtonFormField<String>(
       value: value,
       isExpanded: true,
       menuMaxHeight: 320,
+      dropdownColor: isDark ? const Color(0xFF0F1B2D) : Colors.white,
       items: items
           .map(
             (e) => DropdownMenuItem(
@@ -593,7 +601,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
             e,
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
-            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : null,
+            ),
           ),
         ),
       )
@@ -604,13 +616,15 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       decoration: _compactDecoration(label, icon).copyWith(
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade200),
+          borderSide: BorderSide(color: context.appBorder),
         ),
       ),
     );
   }
 
-  Widget _buildUploadCard() {
+  Widget _buildUploadCard(bool isDark) {
+    final border = context.appBorder;
+
     return InkWell(
       onTap: _pickLoanAgreement,
       borderRadius: BorderRadius.circular(16),
@@ -618,10 +632,10 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: _loanAgreementFile != null ? Colors.green : Colors.grey.shade300,
+            color: _loanAgreementFile != null ? Colors.green : border,
             style: BorderStyle.solid,
           ),
         ),
@@ -630,7 +644,9 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _loanAgreementFile != null ? Colors.green.withOpacity(0.1) : _accent.withOpacity(0.12),
+                color: _loanAgreementFile != null
+                    ? Colors.green.withOpacity(0.1)
+                    : _accent.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -642,12 +658,18 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
             const SizedBox(height: 12),
             Text(
               _loanAgreementFile != null ? "Agreement Attached" : "Upload Loan Agreement",
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.black87),
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               _loanAgreementFile != null ? _loanAgreementFile!.path.split('/').last : "PDF or Image (Max 5MB)",
-              style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500]),
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: isDark ? const Color(0xFF94A3B8) : Colors.grey[500],
+              ),
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
               maxLines: 1,

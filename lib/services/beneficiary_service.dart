@@ -1,24 +1,26 @@
 // lib/services/beneficiary_service.dart
 //
-// FIXED FOR connectivity_plus v6
-// - Correct API for checkConnectivity + onConnectivityChanged
-// - No type errors
-// - Safe caching + offline support
+// Merged & Safe Version
+// - Keeps offline cache for BOTH user loans and loan details
+// - Robust connectivity handling (works across connectivity_plus versions)
+// - Defensive JSON parsing (no Map[0] bug)
+// - Includes new APIs: saveStageUtilization, finalizeVerification
 //
-// Author: ChatGPT (2025 Premium Fix)
+// Author: ChatGPT (2025)
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:loan2/services/api.dart';
+
 import 'package:loan2/models/beneficiary_loan.dart';
-import 'package:loan2/services/sync_service.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'dart:async';
+import 'package:loan2/services/api.dart';
 
 class BeneficiaryService {
-  // Create single connectivity instance
+  // Single connectivity instance
   static final Connectivity _connectivity = Connectivity();
 
   // -------------------------------------------------------------
@@ -33,9 +35,10 @@ class BeneficiaryService {
     try {
       final path = await _getCachePath(key);
       await File(path).writeAsString(content);
-      print("💾 Cached data for $key");
+      // debug
+      // print("💾 Cached data for $key");
     } catch (e) {
-      print("⚠ Failed to cache data: $e");
+      // print("⚠️ Failed to cache data: $e");
     }
   }
 
@@ -44,34 +47,49 @@ class BeneficiaryService {
       final path = await _getCachePath(key);
       final file = File(path);
       if (await file.exists()) {
-        print("📂 Loaded cache for $key");
+        // print("📂 Loaded data from cache for $key");
         return await file.readAsString();
       }
     } catch (e) {
-      print("⚠ Cache read error: $e");
+      // print("⚠️ Failed to load cache: $e");
     }
     return null;
   }
 
   // -------------------------------------------------------------
-  // CONNECTIVITY FIX (connectivity_plus v6)
+  // CONNECTIVITY (robust across connectivity_plus versions)
   // -------------------------------------------------------------
   Future<void> _checkConnectivity() async {
-    final results = await _connectivity.checkConnectivity(); // returns List<ConnectivityResult>
+    final initial = await _connectivity.checkConnectivity();
 
-    bool isOffline = results.isEmpty || results.first == ConnectivityResult.none;
+    // Support both: ConnectivityResult and List<ConnectivityResult>
+    bool offline = false;
+    if (initial is ConnectivityResult) {
+      offline = initial == ConnectivityResult.none;
+    } else if (initial is List<ConnectivityResult>) {
+      offline = initial.every((e) => e == ConnectivityResult.none);
+    }
 
-    if (!isOffline) return;
-
-    print("📴 No internet → waiting...");
+    if (!offline) return;
 
     final completer = Completer<void>();
-    late StreamSubscription<List<ConnectivityResult>> subscription;
 
-    subscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> newResults) {
-      bool hasNet = newResults.isNotEmpty && newResults.first != ConnectivityResult.none;
-      if (hasNet) {
-        subscription.cancel();
+    // Cast to dynamic Stream so we can accept either type at runtime.
+    final Stream<dynamic> stream =
+    (_connectivity.onConnectivityChanged as Stream);
+
+    late StreamSubscription sub;
+    sub = stream.listen((event) {
+      bool online = false;
+      if (event is ConnectivityResult) {
+        online = event != ConnectivityResult.none;
+      } else if (event is List<ConnectivityResult>) {
+        online = event.any((e) => e != ConnectivityResult.none);
+      } else {
+        online = true;
+      }
+      if (online && !completer.isCompleted) {
+        sub.cancel();
         completer.complete();
       }
     });
@@ -80,78 +98,110 @@ class BeneficiaryService {
   }
 
   // -------------------------------------------------------------
-  // FETCH USER LOANS
+  // FETCH USER LOANS (with cache fallback)
   // -------------------------------------------------------------
   Future<List<BeneficiaryLoan>> fetchUserLoans(String userId) async {
-    await _checkConnectivity();
-
     try {
-      final res = await http.get(
-        Uri.parse('${kBaseUrl}user?id=$userId'),
-      );
+      await _checkConnectivity();
+      final uri = Uri.parse('${kBaseUrl}user?id=$userId');
+      final res = await http.get(uri).timeout(const Duration(seconds: 15));
 
       if (res.statusCode == 200) {
+        // Save to cache on success
+        await _saveToCache('user_loans_$userId', res.body);
+
         final decoded = jsonDecode(res.body);
-        final list = decoded['data'] as List? ?? [];
+        final list = (decoded is Map && decoded['data'] is List)
+            ? decoded['data'] as List
+            : <dynamic>[];
+
+        return list.map((e) => BeneficiaryLoan.fromJson(e)).toList();
+      } else {
+        // Server error → fall back to cache
+        final cached = await _loadFromCache('user_loans_$userId');
+        if (cached != null) {
+          final decoded = jsonDecode(cached);
+          final list = (decoded is Map && decoded['data'] is List)
+              ? decoded['data'] as List
+              : <dynamic>[];
+          return list.map((e) => BeneficiaryLoan.fromJson(e)).toList();
+        }
+        throw Exception('Failed to load data: ${res.statusCode}');
+      }
+    } catch (_) {
+      // Network error → try cache
+      final cached = await _loadFromCache('user_loans_$userId');
+      if (cached != null) {
+        final decoded = jsonDecode(cached);
+        final list = (decoded is Map && decoded['data'] is List)
+            ? decoded['data'] as List
+            : <dynamic>[];
         return list.map((e) => BeneficiaryLoan.fromJson(e)).toList();
       }
-    } catch (e) {
-      print("User loans fetch error: $e");
+      // No cache
+      rethrow;
     }
-
-    return [];
   }
 
   // -------------------------------------------------------------
-  // FETCH SINGLE LOAN
+  // FETCH SINGLE LOAN (with cache fallback)
   // -------------------------------------------------------------
   Future<BeneficiaryLoan> fetchLoanDetails(String loanId) async {
-    await _checkConnectivity();
-
     try {
-      final uri = Uri.parse('${kBaseUrl}loan_details?loan_id=$loanId');
+      await _checkConnectivity();
 
+      final uri = Uri.parse('${kBaseUrl}loan_details?loan_id=$loanId');
       final res = await http.get(uri).timeout(const Duration(seconds: 15));
 
       if (res.statusCode == 200) {
         await _saveToCache('loan_details_$loanId', res.body);
         return _parseLoanDetails(res.body);
+      } else {
+        // Server error → fall back to cache
+        final cached = await _loadFromCache('loan_details_$loanId');
+        if (cached != null) return _parseLoanDetails(cached);
+        throw Exception('Failed to load loan details: ${res.statusCode}');
       }
     } catch (_) {
+      // Network error → try cache
       final cached = await _loadFromCache('loan_details_$loanId');
-      if (cached != null) {
-        return _parseLoanDetails(cached);
-      }
+      if (cached != null) return _parseLoanDetails(cached);
+      throw Exception('Error fetching loan details (Offline & No Cache)');
     }
-
-    throw Exception("Loan details unavailable (offline + no cache)");
   }
 
   BeneficiaryLoan _parseLoanDetails(String jsonStr) {
-    final body = jsonDecode(jsonStr);
+    final dynamic body = jsonDecode(jsonStr);
 
-    if (body is Map && body['loan_details'] is Map) {
-      return BeneficiaryLoan.fromJson(body['loan_details']);
+    if (body is Map<String, dynamic>) {
+      // schema: { "loan_details": {...} }
+      if (body['loan_details'] is Map<String, dynamic>) {
+        return BeneficiaryLoan.fromJson(body['loan_details']);
+      }
+
+      // schema: { "data": [ {...} ] }
+      if (body['data'] is List && (body['data'] as List).isNotEmpty) {
+        return BeneficiaryLoan.fromJson((body['data'] as List).first);
+      }
+
+      // schema: { "data": {...} }
+      if (body['data'] is Map<String, dynamic>) {
+        return BeneficiaryLoan.fromJson(body['data'] as Map<String, dynamic>);
+      }
+
+      // schema: direct object
+      return BeneficiaryLoan.fromJson(body);
     }
-    if (body is Map && body['data'] is List && body['data'].isNotEmpty) {
-      return BeneficiaryLoan.fromJson(body['data'][0]);
-    }
-    if (body is Map && body['data'] is Map) {
-      return BeneficiaryLoan.fromJson(body['data']);
-    }
+
     if (body is List && body.isNotEmpty) {
-      return BeneficiaryLoan.fromJson(body[0]);
-    }
-    if (body is Map) {
-      return BeneficiaryLoan.fromJson(body[0]);
+      return BeneficiaryLoan.fromJson(body.first);
     }
 
-    throw Exception("Unexpected loan details JSON");
+    throw Exception('Unexpected response format for loan details');
   }
 
-  Future<BeneficiaryLoan> getLoanDetails(String loanId) async {
-    return fetchLoanDetails(loanId);
-  }
+  // Backward-compatible alias
+  Future<BeneficiaryLoan> getLoanDetails(String loanId) => fetchLoanDetails(loanId);
 
   // -------------------------------------------------------------
   // SAVE UTILIZATION
@@ -166,7 +216,6 @@ class BeneficiaryService {
 
     try {
       final uri = Uri.parse('${kBaseUrl}save_utilization');
-
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -177,10 +226,9 @@ class BeneficiaryService {
           'utilization_amount': amount,
         }),
       );
-
       return res.statusCode == 200;
     } catch (e) {
-      print("❌ Utilization API error: $e");
+      // print("❌ Utilization API error: $e");
       return false;
     }
   }
@@ -193,16 +241,14 @@ class BeneficiaryService {
 
     try {
       final uri = Uri.parse('${kBaseUrl}finalize_verification');
-
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'loan_id': loanId}),
       );
-
       return res.statusCode == 200;
     } catch (e) {
-      print("❌ Finalize API error: $e");
+      // print("❌ Finalize API error: $e");
       return false;
     }
   }

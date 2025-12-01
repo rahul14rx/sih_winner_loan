@@ -11,6 +11,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:loan2/pages/profile_settings_page.dart';
 import 'dart:async';
 import 'package:loan2/widgets/officer_nav_bar.dart';
+import 'package:loan2/services/app_theme.dart';
+import 'package:loan2/pages/login_page.dart';
+import 'package:loan2/services/theme_ext.dart';
+
+enum _UserMenu { profile, settings, logout }
 
 class BankDashboardPage extends StatefulWidget {
   final String officerId;
@@ -132,7 +137,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     }
     return fallback;
   }
-  static const double _reviewsCardH = 225.0; // match the old card height
+
+  static const double _reviewsCardH = 225.0;
 
   Future<void> _openUrl(String url) async {
     final u = Uri.parse(url);
@@ -167,8 +173,15 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    const bg = Color(0xFFF6F7FB);
+    final bg = Theme.of(context).scaffoldBackgroundColor;
     const blue = Color(0xFF1E5AA8);
+
+    // theme helpers
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = Theme.of(context).cardColor;
+    final border = context.appBorder;
+    final titleColor = isDark ? Colors.white : const Color(0xFF111827);
+    final subColor = isDark ? const Color(0xFFCBD5E1) : Colors.grey[600]!;
 
     final pendingItems = _filteredPending;
 
@@ -186,19 +199,18 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
 
               return CustomScrollView(
                 controller: _scroll,
-                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics()),
                 slivers: [
                   SliverToBoxAdapter(
                     child: _buildTopHeaderAndReviews(blue, pad, w),
                   ),
-
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
                       child: _buildBannerSlider(),
                     ),
                   ),
-
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(pad, 18, pad, 10),
@@ -207,19 +219,17 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF111827),
+                          color: titleColor,
                         ),
                       ),
                     ),
                   ),
-
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
                       child: _buildServicesSlider(w),
                     ),
                   ),
-
                   SliverToBoxAdapter(
                     child: Padding(
                       key: _pendingKey,
@@ -231,27 +241,29 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                             style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
-                              color: const Color(0xFF111827),
+                              color: titleColor,
                             ),
                           ),
                           const Spacer(),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
                               color: blue.withOpacity(0.10),
                               borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: blue.withOpacity(0.18)),
+                              border:
+                              Border.all(color: blue.withOpacity(0.18)),
                             ),
                             child: Text(
                               "${pendingItems.length}",
-                              style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: blue),
+                              style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w900, color: blue),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-
                   if (pendingItems.isEmpty)
                     SliverToBoxAdapter(
                       child: Padding(
@@ -269,7 +281,6 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                         childCount: pendingItems.length,
                       ),
                     ),
-
                   const SliverToBoxAdapter(child: SizedBox(height: 110)),
                 ],
               );
@@ -277,15 +288,19 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
           ),
         ),
       ),
-      bottomNavigationBar: OfficerNavBar(currentIndex: 0, officerId: widget.officerId),
+      bottomNavigationBar:
+      OfficerNavBar(currentIndex: 0, officerId: widget.officerId),
     );
   }
 
   Widget _buildTopHeaderAndReviews(Color blue, double pad, double w) {
     final headerH = w >= 600 ? 170.0 : 160.0;
     final overlap = 30.0;
-    final bottomGap = w >= 600 ? 18.0 : 16.0; // responsive spacing after the card
+    final bottomGap = w >= 600 ? 18.0 : 16.0;
     final totalH = headerH + _reviewsCardH - overlap + bottomGap;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = Theme.of(context).cardColor;
 
     return SizedBox(
       height: totalH,
@@ -321,7 +336,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                           'assets/logo.png',
                           width: 22,
                           height: 22,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.gavel_rounded, color: Colors.white),
+                          errorBuilder: (_, __, ___) => const Icon(
+                              Icons.gavel_rounded, color: Colors.white),
                         ),
                       ),
                     ),
@@ -346,20 +362,92 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                   ),
                   child: IconButton(
                     onPressed: () {},
-                    icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
+                    icon: const Icon(Icons.notifications_none_rounded,
+                        color: Colors.white),
                   ),
                 ),
                 const SizedBox(width: 10),
-                InkWell(
-                  borderRadius: BorderRadius.circular(999),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ProfileSettingsPage(officerId: widget.officerId),
-                      ),
-                    );
+                PopupMenuButton<_UserMenu>(
+                  offset: const Offset(0, 44),
+                  elevation: 10,
+                  shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onSelected: (value) {
+                    switch (value) {
+                      case _UserMenu.profile:
+                      case _UserMenu.settings:
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  ProfileSettingsPage(officerId: widget.officerId)),
+                        );
+                        break;
+                      case _UserMenu.logout:
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (_) => const LoginPage()),
+                              (route) => false,
+                        );
+                        break;
+                    }
                   },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: _UserMenu.profile,
+                      child: Row(
+                        children: const [
+                          Icon(Icons.person_outline_rounded, size: 20),
+                          SizedBox(width: 10),
+                          Text('Profile'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      enabled: false,
+                      child: StatefulBuilder(
+                        builder: (context, setSt) {
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(children: const [
+                                Icon(Icons.dark_mode_outlined, size: 20),
+                                SizedBox(width: 10),
+                                Text('Dark mode'),
+                              ]),
+                              Switch(
+                                value: AppTheme.isDark,
+                                onChanged: (v) {
+                                  AppTheme.toggle(v);
+                                  setSt(() {});
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _UserMenu.settings,
+                      child: Row(
+                        children: const [
+                          Icon(Icons.settings_outlined, size: 20),
+                          SizedBox(width: 10),
+                          Text('Settings'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: _UserMenu.logout,
+                      child: Row(
+                        children: const [
+                          Icon(Icons.logout_rounded, size: 20),
+                          SizedBox(width: 10),
+                          Text('Logout'),
+                        ],
+                      ),
+                    ),
+                  ],
                   child: Container(
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
@@ -370,15 +458,15 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                       radius: 18,
                       backgroundColor: Colors.white,
                       child: Text(
-                        widget.officerId.isNotEmpty ? widget.officerId.substring(0, 2).toUpperCase() : "OF",
+                        widget.officerId.isNotEmpty
+                            ? widget.officerId.substring(0, 2).toUpperCase()
+                            : "OF",
                         style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w800,
-                          color: blue,
-                        ),
+                            fontWeight: FontWeight.w800, color: blue),
                       ),
                     ),
                   ),
-                ),
+                )
               ],
             ),
           ),
@@ -388,7 +476,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             top: 74,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: card,
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: [
                   BoxShadow(
@@ -400,16 +488,21 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
               ),
               child: TextField(
                 onChanged: (v) => setState(() => _reviewQuery = v),
-                style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF111827)),
                 decoration: InputDecoration(
                   hintText: "Search reviews",
                   hintStyle: GoogleFonts.inter(
-                    color: Colors.grey[500],
+                    color: isDark ? const Color(0xFF9CA3AF) : Colors.grey[500],
                     fontWeight: FontWeight.w700,
                   ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  prefixIcon: Icon(Icons.search_rounded, color: Colors.grey[500]),
+                  contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  prefixIcon: Icon(Icons.search_rounded,
+                      color:
+                      isDark ? const Color(0xFF9CA3AF) : Colors.grey[500]),
                 ),
               ),
             ),
@@ -427,15 +520,21 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
 
   Widget _buildReviewsCardLikePhoto() {
     const blue = Color(0xFF1E5AA8);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = Theme.of(context).cardColor;
+    final border = context.appBorder;
+    final titleColor = isDark ? Colors.white : const Color(0xFF111827);
+    final muted = isDark ? Colors.white70 : Colors.grey[700];
 
-    final displayName = _officerName.trim().isNotEmpty ? _officerName.trim() : widget.officerId;
+    final displayName =
+    _officerName.trim().isNotEmpty ? _officerName.trim() : widget.officerId;
 
     return Container(
       height: _reviewsCardH,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: card,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
@@ -454,20 +553,20 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
               style: GoogleFonts.poppins(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF111827),
+                color: titleColor,
               ),
             ),
             const SizedBox(height: 8),
             RichText(
               text: TextSpan(
-                style: GoogleFonts.poppins(color: const Color(0xFF111827)),
+                style: GoogleFonts.poppins(color: titleColor),
                 children: [
                   TextSpan(
                     text: "Good afternoon, ",
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: Colors.grey[700],
+                      color: muted,
                     ),
                   ),
                   TextSpan(
@@ -475,7 +574,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                     style: GoogleFonts.poppins(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFF111827),
+                      color: titleColor,
                     ),
                   ),
                 ],
@@ -500,7 +599,6 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             icon: Icons.hourglass_top_rounded,
             iconBg: const Color(0xFFFFF3E0),
             iconColor: const Color(0xFFFF8A00),
-            cardBg: const Color(0x1AF59E0B),
             onTap: _scrollToPending,
           ),
           const SizedBox(width: 12),
@@ -510,11 +608,11 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             icon: Icons.verified_rounded,
             iconBg: const Color(0xFFE8F5E9),
             iconColor: const Color(0xFF16A34A),
-            cardBg: const Color(0x1A22C55E),
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => HistoryPage(officerId: widget.officerId)),
+                MaterialPageRoute(
+                    builder: (_) => HistoryPage(officerId: widget.officerId)),
               );
             },
           ),
@@ -525,11 +623,11 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             icon: Icons.cancel_rounded,
             iconBg: const Color(0xFFFFEBEE),
             iconColor: const Color(0xFFDC2626),
-            cardBg: const Color(0x1AEF4444),
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => HistoryPage(officerId: widget.officerId)),
+                MaterialPageRoute(
+                    builder: (_) => HistoryPage(officerId: widget.officerId)),
               );
             },
           ),
@@ -545,8 +643,14 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     required Color iconBg,
     required Color iconColor,
     required VoidCallback onTap,
-    Color cardBg = Colors.white,
+    Color? cardBg,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF12233D) : (cardBg ?? Colors.white);
+    final border = context.appBorder;
+    final titleColor = isDark ? Colors.white : const Color(0xFF111827);
+    final subColor = isDark ? const Color(0xFFCBD5E1) : Colors.grey[600]!;
+
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -554,9 +658,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
         child: Container(
           height: 106,
           decoration: BoxDecoration(
-            color: cardBg,
+            color: bg,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFF1F5F9)),
+            border: Border.all(color: border),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.06),
@@ -577,7 +681,11 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
               const SizedBox(height: 10),
               Text(
                 "$count",
-                style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.w800),
+                style: GoogleFonts.poppins(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: titleColor,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -585,7 +693,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Colors.grey[600],
+                  color: subColor,
                 ),
               ),
             ],
@@ -602,7 +710,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
           builder: (context, c) {
             const bannerAspect = 1800 / 500;
             final viewportW = c.maxWidth;
-            final pageW = viewportW * 0.92; // matches your PageController viewportFraction
+            final pageW = viewportW * 0.92;
             final h = (pageW / bannerAspect).clamp(165.0, 230.0).toDouble();
 
             return SizedBox(
@@ -635,7 +743,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                           child: Center(
                             child: Text(
                               "Banner ${i + 1}",
-                              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700),
+                              style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700),
                             ),
                           ),
                         ),
@@ -668,9 +778,14 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     );
   }
 
-
   Widget _buildServicesSlider(double w) {
     final tileW = w >= 900 ? 100.0 : (w >= 600 ? 94.0 : 84.0);
+
+    final card = Theme.of(context).cardColor;
+    final border = context.appBorder;
+    final titleColor =
+    Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF111827);
+
     return SizedBox(
       height: 88,
       child: ListView.separated(
@@ -686,9 +801,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             child: Container(
               width: tileW,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: card,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFF1F5F9)),
+                border: Border.all(color: border),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.06),
@@ -718,7 +833,11 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800),
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: titleColor,
+                      ),
                     ),
                   ],
                 ),
@@ -731,10 +850,19 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   }
 
   Widget _buildProLoanCard(LoanApplication loan) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = isDark ? const Color(0xFF12233D) : Colors.white;
+    final border = context.appBorder;
+    final titleColor = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final subColor = isDark ? const Color(0xFFCBD5E1) : Colors.grey[600]!;
+
+    final chipBg = const Color(0xFF1E5AA8).withOpacity(isDark ? 0.25 : 0.10);
+    final chipText = isDark ? Colors.white : const Color(0xFF1E5AA8);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: card,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -743,7 +871,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: border),
       ),
       child: Material(
         color: Colors.transparent,
@@ -752,7 +880,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => LoanDetailPage(loanId: loan.loanId)),
+              MaterialPageRoute(
+                  builder: (_) => LoanDetailPage(loanId: loan.loanId)),
             ).then((_) => _loadData());
           },
           child: Padding(
@@ -763,14 +892,14 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                   width: 50,
                   height: 50,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0F4FF),
+                    color: const Color(0xFF0F1B2D),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Center(
                     child: Text(
                       loan.applicantName.isNotEmpty ? loan.applicantName[0] : "?",
                       style: GoogleFonts.poppins(
-                        color: const Color(0xFF435E91),
+                        color: const Color(0xFF60A5FA),
                         fontWeight: FontWeight.bold,
                         fontSize: 20,
                       ),
@@ -787,24 +916,25 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                         style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w600,
                           fontSize: 16,
-                          color: const Color(0xFF1A1A1A),
+                          color: titleColor,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.1),
+                              color: chipBg,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               "ID: ${loan.loanId}",
                               style: GoogleFonts.inter(
                                 fontSize: 11,
-                                color: Colors.deepOrange,
-                                fontWeight: FontWeight.w600,
+                                color: chipText,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
@@ -812,7 +942,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                           Text(
                             "• ₹${loan.amount.toStringAsFixed(0)}",
                             style: GoogleFonts.inter(
-                              color: Colors.grey[600],
+                              color: subColor,
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                             ),
@@ -822,7 +952,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                     ],
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey[300]),
+                Icon(Icons.arrow_forward_ios_rounded,
+                    size: 16, color: subColor.withOpacity(0.4)),
               ],
             ),
           ),
@@ -832,30 +963,36 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   }
 
   Widget _buildEmptyStateCompact() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = Theme.of(context).cardColor;
+    final border = context.appBorder;
+    final subColor = isDark ? const Color(0xFFCBD5E1) : Colors.grey[600]!;
+
     return Container(
       padding: const EdgeInsets.all(26),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: border),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.check_circle_outline_rounded, size: 70, color: Colors.grey[200]),
+          Icon(Icons.check_circle_outline_rounded,
+              size: 70, color: subColor.withOpacity(0.25)),
           const SizedBox(height: 14),
           Text(
             "All caught up!",
             style: GoogleFonts.poppins(
               fontSize: 18,
-              color: Colors.grey[500],
+              color: subColor,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             "No pending loans to review.",
-            style: GoogleFonts.inter(color: Colors.grey[600], fontWeight: FontWeight.w600),
+            style: GoogleFonts.inter(color: subColor, fontWeight: FontWeight.w600),
           ),
         ],
       ),

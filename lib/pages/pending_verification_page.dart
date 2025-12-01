@@ -1,8 +1,11 @@
-import 'dart:ui';
+// lib/pages/pending_verification_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import 'package:loan2/models/beneficiary_loan.dart';
 import 'package:loan2/pages/loan_detail_screen.dart';
+import 'package:loan2/pages/beneficiary_dashboard.dart';
 
 class PendingVerificationPage extends StatefulWidget {
   final String userId;
@@ -21,45 +24,192 @@ class PendingVerificationPage extends StatefulWidget {
 
 class _PendingVerificationPageState extends State<PendingVerificationPage> {
   final TextEditingController _search = TextEditingController();
-  late List<BeneficiaryLoan> filtered;
+
+  late List<BeneficiaryLoan> _allPending; // master pending list
+  late List<BeneficiaryLoan> _filtered;
 
   @override
   void initState() {
     super.initState();
-    filtered = widget.loans;
+    _allPending = _onlyPending(widget.loans);
+    _filtered = List<BeneficiaryLoan>.from(_allPending);
     _search.addListener(_applySearch);
+  }
+
+  /// react to updated loans coming from the dashboard
+  @override
+  void didUpdateWidget(covariant PendingVerificationPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.loans != widget.loans ||
+        oldWidget.userId != widget.userId) {
+      _allPending = _onlyPending(widget.loans);
+      _applySearch(); // keeps any search text applied
+    }
   }
 
   @override
   void dispose() {
+    _search.removeListener(_applySearch);
     _search.dispose();
     super.dispose();
   }
 
-  void _applySearch() {
-    final q = _search.text.toLowerCase().trim();
+  // ---------- helpers ----------
 
+  // extract `status` whether step is a model or a map
+  String? _stepStatus(dynamic s) {
+    try {
+      if (s is Map) return s['status']?.toString();
+      final d = s as dynamic;
+      return d.status as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isPendingStatus(String? s) {
+    final t = (s ?? '').toLowerCase().replaceAll(' ', '_');
+    return t.isEmpty ||
+        t == 'pending' ||
+        t == 'not_verified' ||
+        t == 'in_review' ||
+        t == 'pending_review' ||
+        t == 'in_progress' ||
+        t == 'submitted';
+  }
+
+  bool _isVerifiedStatus(String? s) {
+    return (s ?? '').toLowerCase().trim() == 'verified';
+  }
+
+  List<BeneficiaryLoan> _onlyPending(List<BeneficiaryLoan> loans) {
+    return loans.where((loan) {
+      final steps = loan.processes;
+      final anyPending = steps.any((st) => _isPendingStatus(_stepStatus(st)));
+      // keep only the current user's loans (or all, if userId was intentionally empty)
+      final mine = (loan.userId ?? '') == widget.userId || widget.userId.isEmpty;
+      return anyPending && mine;
+    }).toList();
+  }
+
+  void _applySearch() {
+    final q = _search.text.trim().toLowerCase();
     setState(() {
-      filtered = widget.loans.where((loan) {
-        return loan.loanId!.toLowerCase().contains(q) ||
-            (loan.loanType ?? '').toLowerCase().contains(q) ||
-            (loan.applicantName ?? '').toLowerCase().contains(q);
+      if (q.isEmpty) {
+        _filtered = List<BeneficiaryLoan>.from(_allPending);
+        return;
+      }
+      _filtered = _allPending.where((loan) {
+        final id = (loan.loanId ?? '').toLowerCase();
+        final type = (loan.loanType ?? '').toLowerCase();
+        final name = (loan.applicantName ?? '').toLowerCase();
+        return id.contains(q) || type.contains(q) || name.contains(q);
       }).toList();
     });
   }
 
-  // -------------------------------------------------------------------
-  // SAME LOAN CARD UI FROM DASHBOARD — UPGRADED WITH LIGHT THEME
-  // -------------------------------------------------------------------
+  void _goHome() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => BeneficiaryDashboard(userId: widget.userId),
+      ),
+          (route) => false,
+    );
+  }
+
+  // ---------- UI ----------
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        _goHome();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF6F9FC),
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _goHome,
+          ),
+          title: Text(
+            "Pending Verification",
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+          ),
+          centerTitle: true,
+          elevation: 0,
+          backgroundColor: const Color(0xFF1F6FEB),
+          foregroundColor: Colors.white,
+        ),
+        body: Column(
+          children: [
+            // search
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+              child: Container(
+                height: 52,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    )
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search, color: Color(0xFF6B7C9A)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _search,
+                        decoration: const InputDecoration(
+                          hintText: "Search by Loan ID, Type or Name",
+                          border: InputBorder.none,
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            ),
+
+            // list
+            Expanded(
+              child: _filtered.isEmpty
+                  ? const Center(
+                child: Text(
+                  "No loans found.",
+                  style: TextStyle(fontSize: 16),
+                ),
+              )
+                  : ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+                itemCount: _filtered.length,
+                itemBuilder: (_, i) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: _loanCard(_filtered[i]),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _loanCard(BeneficiaryLoan loan) {
-    int totalSteps = loan.processes.length;
-    int completedSteps =
-        loan.processes.where((p) => p.status == 'verified').length;
+    final total = loan.processes.length;
+    final done =
+        loan.processes.where((p) => _isVerifiedStatus(_stepStatus(p))).length;
 
-    double progress =
-    totalSteps > 0 ? completedSteps / totalSteps : 0.0;
-
-    int percentage = (progress * 100).toInt();
+    final progress = total > 0 ? done / total : 0.0;
+    final percentage = (progress * 100).toInt();
 
     Color statusColor = Colors.orange;
     String statusText = "Pending";
@@ -76,11 +226,7 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => LoanDetailScreen(
-              loan: loan,
-            ),
-          ),
+          MaterialPageRoute(builder: (_) => LoanDetailScreen(loan: loan)),
         );
       },
       borderRadius: BorderRadius.circular(20),
@@ -100,13 +246,13 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ROW 1
+            // header row
             Row(
               children: [
-                CircleAvatar(
+                const CircleAvatar(
                   radius: 24,
-                  backgroundColor: const Color(0xFFEEF7FF),
-                  child: const Icon(Icons.inventory_2_outlined,
+                  backgroundColor: Color(0xFFEEF7FF),
+                  child: Icon(Icons.inventory_2_outlined,
                       color: Color(0xFF1F6FEB)),
                 ),
                 const SizedBox(width: 14),
@@ -114,11 +260,11 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Loan #${loan.loanId}",
+                      Text("Loan #${loan.loanId ?? ''}",
                           style: GoogleFonts.inter(
                               fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 3),
-                      Text("Beneficiary: ${loan.userId}",
+                      Text("Beneficiary: ${loan.userId ?? ''}",
                           style: TextStyle(
                               color: Colors.grey[600], fontSize: 13)),
                     ],
@@ -149,7 +295,7 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
 
             const SizedBox(height: 18),
 
-            // PROGRESS HEADER
+            // progress
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -161,9 +307,7 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
                         fontWeight: FontWeight.bold, fontSize: 14)),
               ],
             ),
-
             const SizedBox(height: 8),
-
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: LinearProgressIndicator(
@@ -176,7 +320,7 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
 
             const SizedBox(height: 12),
 
-            // BUTTONS
+            // actions
             Row(
               children: [
                 TextButton.icon(
@@ -197,135 +341,11 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
                     );
                   },
                   icon: const Icon(Icons.more_vert),
-                )
+                ),
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // -------------------------------------------------------------------
-  // HEADER (GLASS + GRADIENT)
-  // -------------------------------------------------------------------
-  Widget _header(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 12,
-        left: 18,
-        right: 18,
-        bottom: 18,
-      ),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1F6FEB), Color(0xFF2757D6)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(26)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 26,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.white24,
-                    child: Icon(Icons.verified_user_outlined,
-                        color: Colors.white),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text("Pending Verification",
-                        style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700)),
-                  ),
-                  const CircleAvatar(
-                    radius: 18,
-                    backgroundImage: NetworkImage(
-                        'https://www.gravatar.com/avatar/placeholder?s=200&d=robohash'),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // SEARCH BAR (LIGHT CARD)
-              Container(
-                height: 56,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 6))
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.search,
-                        size: 26, color: Color(0xFF6B7C9A)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _search,
-                        decoration: const InputDecoration(
-                          hintText: "Search by Loan ID, Type or Name",
-                          border: InputBorder.none,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // -------------------------------------------------------------------
-  // MAIN BUILD
-  // -------------------------------------------------------------------
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F9FC),
-      body: Column(
-        children: [
-          _header(context),
-          Expanded(
-            child: filtered.isEmpty
-                ? const Center(
-                child: Text("No loans found.",
-                    style: TextStyle(fontSize: 16)))
-                : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-              itemCount: filtered.length,
-              itemBuilder: (_, i) => Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: _loanCard(filtered[i]),
-              ),
-            ),
-          )
-        ],
       ),
     );
   }
