@@ -33,10 +33,11 @@ dependencies:
   sensors_plus: ^5.0.1
   permission_handler: ^11.0.1
   flutter_tts: ^3.8.3
-  google_fonts: ^6.1.0
-  url_launcher: ^6.2.1
+  google_fonts: ^5.0.0
+  url_launcher: ^6.1.7
   fl_chart: ^0.66.0
   geolocator: ^14.0.2
+  intl: ^0.19.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

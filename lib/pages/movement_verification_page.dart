@@ -1,51 +1,35 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui'; // For ImageFilter (Blur effect)
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_tts/flutter_tts.dart'; // IMPORT TTS
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'dart:io';
+import 'package:loan2/models/process_step.dart';
+
 
 List<CameraDescription> _cameras = [];
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  try {
-    _cameras = await availableCameras();
-  } on CameraException catch (e) {
-    print('Error initializing camera: $e');
-  }
-  runApp(const MovementApp());
-}
+class MovementVerificationPage extends StatefulWidget {
+  final String loanId;
+  final String userId;
+  final ProcessStep step;
 
-class MovementApp extends StatelessWidget {
-  const MovementApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: Colors.black,
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.white,
-          secondary: Colors.white,
-        ),
-      ),
-      home: const MovementScreen(),
-    );
-  }
-}
-
-class MovementScreen extends StatefulWidget {
-  const MovementScreen({super.key});
+  const MovementVerificationPage({
+    super.key,
+    required this.loanId,
+    required this.userId,
+    required this.step,
+  });
 
   @override
-  State<MovementScreen> createState() => _MovementScreenState();
+  State<MovementVerificationPage> createState() => _MovementScreenState();
 }
 
-class _MovementScreenState extends State<MovementScreen> {
+class _MovementScreenState extends State<MovementVerificationPage> {
   CameraController? _controller;
   StreamSubscription? _accelSubscription;
   Timer? _gameLoopTimer;

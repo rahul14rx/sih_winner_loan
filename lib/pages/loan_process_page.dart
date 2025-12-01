@@ -1,7 +1,9 @@
+// lib/pages/loan_process_page.dart
 import 'package:flutter/material.dart';
 import 'package:loan2/models/beneficiary_loan.dart';
+import 'package:loan2/pages/verification_step_page.dart';
 import 'package:loan2/services/beneficiary_service.dart';
-import 'package:loan2/pages/verification_wizard_page.dart';
+import 'package:loan2/models/process_step.dart';
 
 class LoanProcessPage extends StatefulWidget {
   final String loanId;
@@ -50,20 +52,34 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
   }
 
   bool _isConstruction(BeneficiaryLoan loan) {
-    final t = loan.loanType.toLowerCase();
-    final s = loan.scheme.toLowerCase();
-    return t.contains('construction') || t.contains('shop') || s.contains('construction') || s.contains('shop');
+    final t = (loan.loanType ?? '').toLowerCase();
+    final s = (loan.scheme ?? '').toLowerCase();
+    return t.contains('construction') ||
+        t.contains('shop') ||
+        s.contains('construction') ||
+        s.contains('shop');
   }
 
-  int? _stageNoFromText(String text) {
+  int? _stageNoFromText(String? text) {
+    if (text == null) return null;
     final re = RegExp(r'^\s*Stage\s*(\d+)\s*:', caseSensitive: false);
     final m = re.firstMatch(text.trim());
-    if (m == null) return null;
-    return int.tryParse(m.group(1) ?? "");
+    return m == null ? null : int.tryParse(m.group(1) ?? "");
   }
 
+  // ensure imports at top: import 'package:loan2/models/process_step.dart';
+
   List<ProcessStep> _sortedSteps(BeneficiaryLoan loan) {
-    final steps = [...loan.processes]..sort((a, b) => a.processId.compareTo(b.processId));
+    // Convert to typed list defensively
+    final raw = loan.processes ?? <dynamic>[];
+    final List<ProcessStep> steps = raw.map<ProcessStep>((e) {
+      if (e is ProcessStep) return e;
+      if (e is Map<String, dynamic>) return ProcessStep.fromJson(e);
+      // fallback: try toString -> empty step
+      return ProcessStep(id: e?.toString() ?? '', processId: 0);
+    }).toList();
+
+    steps.sort((a, b) => a.processId.compareTo(b.processId));
     return steps;
   }
 
@@ -77,37 +93,46 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
     return mp;
   }
 
-  String _fmtMoney(double v) => "₹${v.toStringAsFixed(0)}";
 
-  Color _statusColor(String s) {
-    final t = s.toLowerCase().trim();
+  String _fmtMoney(dynamic v) {
+    if (v == null) return "₹0";
+    if (v is num) return "₹${v.toStringAsFixed(0)}";
+    if (v is String) return "₹${v}";
+    return "₹0";
+  }
+
+  Color _statusColor(String? s) {
+    final t = (s ?? '').toLowerCase().trim();
     if (t == 'verified') return const Color(0xFF138808);
     if (t == 'rejected') return Colors.red;
     if (t == 'pending_review') return Colors.blue;
     return Colors.grey[700]!;
   }
 
-  String _prettyStatus(String s) {
-    final t = s.toLowerCase().trim();
-    if (t == 'not verified') return 'not verified';
-    if (t == 'pending_review') return 'in review';
-    return t.isEmpty ? 'pending' : t;
+  String _prettyStatus(String? s) {
+    final t = (s ?? '').toLowerCase().trim();
+    if (t.isEmpty) return "pending";
+    if (t == 'pending_review') return "in review";
+    return t;
   }
 
-  Widget _row(String k, String v, {Color? valueColor}) {
+  Widget _row(String k, String? v, {Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           SizedBox(
             width: 120,
-            child: Text(k, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            child: Text(k,
+                style: TextStyle(color: Colors.grey[600], fontSize: 12)),
           ),
           Expanded(
             child: Text(
-              v,
+              v ?? "",
               textAlign: TextAlign.right,
-              style: TextStyle(fontWeight: FontWeight.w700, color: valueColor ?? Colors.black87),
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: valueColor ?? Colors.black87),
             ),
           ),
         ],
@@ -115,6 +140,7 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
     );
   }
 
+  // ---------------------------- STEPS SHEET ----------------------------
   void _openStepsSheet(BeneficiaryLoan loan) {
     setState(() => _agree = false);
 
@@ -153,39 +179,50 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
                   ),
                   child: Text(
                     "${st.processId}",
-                    style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF7A3E00)),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF7A3E00)),
                   ),
                 ),
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        st.whatToDo.isEmpty ? "Step ${st.processId}" : st.whatToDo,
+                        (st.whatToDo ?? '').isEmpty
+                            ? "Step ${st.processId}"
+                            : st.whatToDo!,
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 6),
+
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
-                              st.dataType,
-                              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                              st.dataType ?? "image",
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey[700]),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Text(
                             _prettyStatus(st.status),
-                            style: TextStyle(fontSize: 12, color: _statusColor(st.status), fontWeight: FontWeight.w800),
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: _statusColor(st.status),
+                                fontWeight: FontWeight.w800),
                           ),
                         ],
-                      ),
+                      )
                     ],
                   ),
                 ),
@@ -199,105 +236,110 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
         content.add(const SizedBox(height: 6));
         content.add(const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            "Verification Steps",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-          ),
+          child: Text("Verification Steps",
+              style:
+              TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
         ));
         content.add(const SizedBox(height: 10));
 
         if (!isConst) {
-          content.addAll(steps.map((s) => Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: stepTile(s),
-          )));
+          for (final s in steps) {
+            content.add(Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: stepTile(s)));
+          }
         } else {
           for (final k in stageKeys) {
             if (k == 0) continue;
+
             content.add(Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: Text(
-                "Stage $k",
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
-              ),
+              padding:
+              const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Text("Stage $k",
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900, fontSize: 13)),
             ));
-            final stList = groups[k] ?? [];
-            for (final s in stList) {
+
+            for (final s in groups[k]!) {
               content.add(Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: stepTile(s),
-              ));
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: stepTile(s)));
             }
           }
 
-          if (groups.containsKey(0) && (groups[0]?.isNotEmpty ?? false)) {
+          // others (stage 0)
+          if (groups.containsKey(0) && groups[0]!.isNotEmpty) {
             content.add(const Padding(
-              padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: Text(
-                "Other",
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
-              ),
+              padding:
+              EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Text("Other",
+                  style: TextStyle(
+                      fontWeight: FontWeight.w900, fontSize: 13)),
             ));
             for (final s in groups[0]!) {
               content.add(Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: stepTile(s),
-              ));
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: stepTile(s)));
             }
           }
         }
 
         content.add(const SizedBox(height: 8));
-        content.add(Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Row(
-            children: [
-              Checkbox(
-                value: _agree,
-                activeColor: _saffron,
-                onChanged: (v) => setState(() => _agree = v == true),
-              ),
-              const Expanded(
-                child: Text(
-                  "I have read and understood the steps",
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-        ));
 
+        // agreement checkbox
+        content.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: _agree,
+                  activeColor: _saffron,
+                  onChanged: (v) =>
+                      setState(() => _agree = v == true),
+                ),
+                const Expanded(
+                  child: Text("I have read and understood the steps",
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        // START button
         content.add(Padding(
-          padding: EdgeInsets.fromLTRB(16, 6, 16, MediaQuery.of(context).padding.bottom + 16),
+          padding: EdgeInsets.fromLTRB(
+              16, 6, 16, MediaQuery.of(context).padding.bottom + 16),
           child: SizedBox(
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: _agree
-                  ? () {
+              onPressed: !_agree
+                  ? null
+                  : () {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => VerificationWizardPage(
-                      loanId: loan.loanId,
-                      userId: loan.userId.isNotEmpty ? loan.userId : widget.userId,
+                    builder: (_) => VerificationStepPage(
+                      loanId: loan.loanId ?? "",
+                      userId: (loan.userId ?? "").isNotEmpty ? loan.userId! : widget.userId,
+                      steps: _sortedSteps(loan),     // 🔥 REQUIRED FIX
                     ),
                   ),
                 ).then((_) => _load(silent: true));
-              }
-                  : null,
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _navy,
                 foregroundColor: Colors.white,
                 disabledBackgroundColor: Colors.grey.shade300,
-                disabledForegroundColor: Colors.grey.shade600,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
               ),
-              child: const Text(
-                "Start Verification Process",
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
-              ),
+              child: const Text("Start Verification Process",
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w900)),
             ),
           ),
         ));
@@ -307,9 +349,9 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
             height: MediaQuery.of(context).size.height * 0.82,
             child: SingleChildScrollView(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: content,
-              ),
+                  crossAxisAlignment:
+                  CrossAxisAlignment.start,
+                  children: content),
             ),
           ),
         );
@@ -342,7 +384,8 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
           children: [
             const Text("Failed to load loan details"),
             const SizedBox(height: 10),
-            ElevatedButton(onPressed: _load, child: const Text("Retry")),
+            ElevatedButton(
+                onPressed: _load, child: const Text("Retry")),
           ],
         ),
       )
@@ -351,6 +394,7 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           child: Column(
             children: [
+              // Loan Utilization
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
@@ -364,28 +408,40 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
                   children: [
                     Row(
                       children: [
-                        const Text("Loan Utilization", style: TextStyle(fontWeight: FontWeight.w900)),
+                        const Text("Loan Utilization",
+                            style: TextStyle(
+                                fontWeight: FontWeight.w900)),
                         const Spacer(),
-                        Text("Provisional", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                        Text("Provisional",
+                            style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12)),
                       ],
                     ),
                     const SizedBox(height: 10),
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius:
+                      BorderRadius.circular(999),
                       child: LinearProgressIndicator(
-                        value: 0.0,
+                        value: (loan.totalUtilized ?? 0) /
+                            (loan.amount ?? 1),
                         minHeight: 10,
                       ),
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      "${_fmtMoney(0)} of ${_fmtMoney(loan.amount)} used",
-                      style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w800),
+                      "${_fmtMoney(loan.totalUtilized ?? 0)} of ${_fmtMoney(loan.amount)} used",
+                      style: TextStyle(
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w800),
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(height: 14),
+
+              // Loan Details
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
@@ -402,11 +458,14 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
                     _row("Scheme", loan.scheme),
                     _row("Date Applied", loan.dateApplied),
                     _row("Sanctioned Amount", _fmtMoney(loan.amount)),
-                    _row("Status", loan.status, valueColor: _statusColor(loan.status)),
+                    _row("Status", loan.status,
+                        valueColor: _statusColor(loan.status)),
                   ],
                 ),
               ),
+
               const Spacer(),
+
               SizedBox(
                 width: double.infinity,
                 height: 54,
@@ -415,11 +474,15 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _saffron,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius:
+                        BorderRadius.circular(14)),
                   ),
                   child: const Text(
                     "Start Verification Process",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900),
                   ),
                 ),
               ),

@@ -1,16 +1,48 @@
+/// YOUR FULL UPDATED NON-REFRESHING BENEFICIARY DASHBOARD
+/// --------------------------------------------------------
+/// - Permanent bottom nav
+/// - IndexedStack pages
+/// - Only Home has its big header
+/// - Other tabs load normally
+/// --------------------------------------------------------
+
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart'; // Added for phone call
+import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:loan2/pages/alerts_page.dart';
+import 'package:loan2/pages/verification_history_page.dart';
+import 'package:loan2/pages/pending_verification_page.dart';
 import 'package:loan2/services/beneficiary_service.dart';
 import 'package:loan2/models/beneficiary_loan.dart';
-import 'package:loan2/pages/loan_detail_screen.dart';
-import 'package:loan2/widgets/beneficiary_drawer.dart';
 import 'package:loan2/services/sync_service.dart';
 import 'package:loan2/services/database_helper.dart';
+import 'package:loan2/pages/loan_detail_screen.dart';
 
+// --------------------------------------------------------------
+// Banner & Services Models
+// --------------------------------------------------------------
+class _BannerItem {
+  final String asset;
+  final String url;
+  final String title;
+  const _BannerItem({required this.asset, required this.url, this.title = ""});
+}
+
+class _ServiceItem {
+  final String label;
+  final String asset;
+  final String url;
+  const _ServiceItem({required this.label, required this.asset, required this.url});
+}
+
+// --------------------------------------------------------------
+// MAIN DASHBOARD
+// --------------------------------------------------------------
 class BeneficiaryDashboard extends StatefulWidget {
   final String userId;
-
   const BeneficiaryDashboard({super.key, required this.userId});
 
   @override
@@ -19,312 +51,597 @@ class BeneficiaryDashboard extends StatefulWidget {
 
 class _BeneficiaryDashboardState extends State<BeneficiaryDashboard> {
   final BeneficiaryService _service = BeneficiaryService();
+
+  int _selectedIndex = 0;
+
+  bool isOnline = false;
+  int unsyncedCount = 0;
+
   List<BeneficiaryLoan> _loans = [];
   bool _isLoading = true;
 
-  // Added State Variables
-  bool isOnline = false;
-  int unsyncedCount = 0;
-  StreamSubscription? _syncSubscription;
-  StreamSubscription? _onlineStatusSubscription;
+  StreamSubscription? _syncSub;
+  StreamSubscription? _onlineSub;
+
+  // Banner
+  late PageController _bannerController;
+  Timer? _bannerTimer;
+  int _bannerIndex = 0;
+
+  final List<_BannerItem> _banners = const [
+    _BannerItem(asset: 'assets/b_banners/banner1.png', url: 'https://nbcfdc.gov.in/', title: 'NSKFDC'),
+    _BannerItem(asset: 'assets/b_banners/banner2.jpeg', url: 'https://nskfdc.nic.in/', title: 'NSFDC'),
+    _BannerItem(asset: 'assets/b_banners/banner3.png', url: 'https://nsfdc.nic.in/en/schemes/', title: 'NBCFDC'),
+    _BannerItem(asset: 'assets/b_banners/banner4.png', url: 'https://www.desw.gov.in/prime-ministers-scholarship-scheme-pmss/', title: 'PMSSS'),
+    _BannerItem(asset: 'assets/b_banners/banner5.png', url: 'https://pmajay.dosje.gov.in/', title: 'PM-AJAY'),
+  ];
+
+  final List<_ServiceItem> _services = const [
+    _ServiceItem(label: 'NSKFDC', asset: 'assets/services/nskfdc.png', url: 'https://nskfdc.nic.in/en/node/add/loan-application/'),
+    _ServiceItem(label: 'NSFDC', asset: 'assets/services/nsfdc.png', url: 'https://nsfdc.nic.in/en/form/'),
+    _ServiceItem(label: 'NBCFDC', asset: 'assets/services/nbcfdc.png', url: 'https://nbcfdc.gov.in/nbcfdc/web/howapply/'),
+    _ServiceItem(label: 'PMSSS', asset: 'assets/services/pmss.png', url: 'https://www.desw.gov.in/prime-ministers-scholarship-scheme-pmss/'),
+    _ServiceItem(label: 'PM-AJAY', asset: 'assets/services/pmajay.png', url: 'https://www.myscheme.gov.in/schemes/ab-pmjay/'),
+  ];
 
   @override
   void initState() {
     super.initState();
-    _initPage();
+    _bannerController = PageController(viewportFraction: 0.92);
 
-    // Listen for background syncs to refresh UI (e.g., after an upload completes)
-    _syncSubscription = SyncService.onSync.listen((_) {
-      debugPrint("🔄 UI Refresh triggered by post-sync event");
-      _loadData();
+    _initDashboard();
+    _startBannerAutoSlide();
+
+    _syncSub = SyncService.onSync.listen((_) {
+      _loadLoans();
       _updateUnsyncedCount();
     });
 
-    // Listen for connectivity changes to refresh UI
-    _onlineStatusSubscription = SyncService.onOnlineStatusChanged.listen((online) {
-      if (online != isOnline) {
-        setState(() {
-          isOnline = online;
-        });
-
-        // If the app just came online, refresh the data.
-        if (online) {
-          debugPrint("🚀 UI Refresh triggered by coming online");
-          _loadData();
-          _updateUnsyncedCount();
-        }
+    _onlineSub = SyncService.onOnlineStatusChanged.listen((online) {
+      if (mounted) setState(() => isOnline = online);
+      if (online) {
+        _loadLoans();
+        _updateUnsyncedCount();
       }
     });
   }
 
   @override
   void dispose() {
-    _syncSubscription?.cancel();
-    _onlineStatusSubscription?.cancel();
+    _bannerTimer?.cancel();
+    _bannerController.dispose();
+    _syncSub?.cancel();
+    _onlineSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _initPage() async {
-    // Initial check
+  Future<void> _initDashboard() async {
     isOnline = await SyncService.realInternetCheck();
     await _updateUnsyncedCount();
-    await _loadData();
+    await _loadLoans();
   }
 
   Future<void> _updateUnsyncedCount() async {
-    final count = await DatabaseHelper.instance.getQueuedForUploadCount();
-    if (mounted) {
-      setState(() {
-        unsyncedCount = count;
-      });
-    }
+    final c = await DatabaseHelper.instance.getQueuedForUploadCount();
+    if (mounted) setState(() => unsyncedCount = c);
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadLoans() async {
     try {
       final data = await _service.fetchUserLoans(widget.userId);
-      if (mounted) setState(() { _loans = data; _isLoading = false; });
-    } catch (e) {
+      final filtered = data.where((l) => (l.userId ?? "") == widget.userId).toList();
+
       if (mounted) {
-        setState(() => _isLoading = false);
-        // Optionally show a "showing cached data" snackbar here
+        setState(() {
+          _loans = filtered;
+          _isLoading = false;
+        });
       }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // Function to make a phone call
-  Future<void> _makePhoneCall() async {
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: '9150462438',
-    );
-    try {
-      if (await canLaunchUrl(launchUri)) {
-        await launchUrl(launchUri);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Could not launch dialer")),
-          );
-        }
+  void _startBannerAutoSlide() {
+    _bannerTimer?.cancel();
+    _bannerTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (_bannerController.hasClients && mounted) {
+        final next = (_bannerIndex + 1) % _banners.length;
+        _bannerController.animateToPage(
+          next,
+          duration: const Duration(milliseconds: 650),
+          curve: Curves.easeInOut,
+        );
       }
-    } catch (e) {
-      debugPrint("Error launching call: $e");
-    }
+    });
+  }
+
+  Future<void> _openUrl(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------
+  // NAVIGATION — IndexedStack (NO REFRESH)
+  // ---------------------------------------------------------------
+  void _selectTab(int index) {
+    if (!mounted) return;
+    setState(() => _selectedIndex = index);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        title: const Text(
-          'My Requests',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        automaticallyImplyLeading: true,
-        iconTheme: const IconThemeData(color: Colors.black),
-        actions: [
-          // 1. Unsynced Count Indicator
-          if (unsyncedCount > 0)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.orange[200]!)
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.sync_problem, color: Colors.orange, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    "$unsyncedCount Pending",
-                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
+      backgroundColor: const Color(0xFFF6F9FC),
 
-          // 2. Online/Offline Indicator
+      floatingActionButton: _selectedIndex == 0
+          ? Padding(
+        padding: const EdgeInsets.only(bottom: 82),
+        child: FloatingActionButton.extended(
+          onPressed: () => _openUrl("tel:9150462438"),
+          backgroundColor: const Color(0xFF2EA46B),
+          icon: const Icon(Icons.call),
+          label: const Text("Call Support"),
+        ),
+      )
+          : null,
+
+      bottomNavigationBar: _buildBottomNav(),
+
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          _homeTab(),
+          PendingVerificationPage(userId: widget.userId, loans: _loans),
+          VerificationHistoryPage(userId: widget.userId),
+          AlertsPage(userId: widget.userId),
+          _helpTab(),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // HOME TAB ONLY → Has header + loan cards
+  // ---------------------------------------------------------------
+  Widget _homeTab() {
+    return Column(
+      children: [
+        _header(),
+        Expanded(child: _homeBody()),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // HELP TAB SIMPLE PAGE
+  // ---------------------------------------------------------------
+  Widget _helpTab() {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Help & Support")),
+      body: const Center(child: Text("Help content here")),
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // HEADER — Only for home
+  // ---------------------------------------------------------------
+  Widget _header() {
+    return Container(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 16,
+        left: 16,
+        right: 16,
+        bottom: 16,
+      ),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1F6FEB), Color(0xFF2757D6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(26)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const CircleAvatar(
+                radius: 20,
+                backgroundColor: Colors.white24,
+                child: Icon(Icons.account_balance_wallet, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "Nyay Sahayak",
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const Icon(Icons.notifications_none, color: Colors.white),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // SEARCH BAR
           Container(
-            margin: const EdgeInsets.only(right: 16, left: 8, top: 12, bottom: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            height: 54,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-                color: isOnline ? Colors.green[50] : Colors.red[50],
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: isOnline ? Colors.green[200]! : Colors.red[200]!)
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Row(
-              children: [
-                Icon(
-                    isOnline ? Icons.wifi : Icons.wifi_off,
-                    color: isOnline ? Colors.green : Colors.red,
-                    size: 16
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  isOnline ? "Online" : "Offline",
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: isOnline ? Colors.green[800] : Colors.red[800]
-                  ),
-                ),
+              children: const [
+                Icon(Icons.search, color: Color(0xFF6B7C9A)),
+                SizedBox(width: 8),
+                Expanded(child: Text("Search for loan corporations & schemes")),
+                Icon(Icons.mic_none, color: Color(0xFF6B7C9A)),
               ],
             ),
           ),
         ],
       ),
-
-      drawer: BeneficiaryDrawer(userId: widget.userId),
-
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-        onRefresh: _loadData,
-        child: _loans.isEmpty
-            ? _buildEmptyState()
-            : ListView.separated(
-          padding: const EdgeInsets.all(20),
-          itemCount: _loans.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 16),
-          itemBuilder: (context, index) => _buildLoanCard(_loans[index]),
-        ),
-      ),
-      
-      // Add Call Button (Floating Action Button)
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _makePhoneCall,
-        backgroundColor: const Color(0xFF138808),
-        icon: const Icon(Icons.call, color: Colors.white),
-        label: const Text("Call Support", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.assignment_outlined, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          Text("No active loans found.", style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-          const SizedBox(height: 8),
-          Text("User ID: ${widget.userId}", style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoanCard(BeneficiaryLoan loan) {
-    int totalSteps = loan.processes.length;
-    int completedSteps = loan.processes.where((p) => p.status == 'verified').length;
-    double progress = totalSteps > 0 ? completedSteps / totalSteps : 0.0;
-    int percentage = (progress * 100).toInt();
-
-    Color statusColor = Colors.orange;
-    String statusText = "Pending";
-    if (percentage > 0 && percentage < 100) {
-      statusColor = Colors.blue;
-      statusText = "In Progress";
-    } else if (percentage == 100) {
-      statusColor = Colors.green;
-      statusText = "Verified";
+  // ---------------------------------------------------------------
+  // HOME BODY CONTENT
+  // ---------------------------------------------------------------
+  Widget _homeBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
     }
 
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _categoryRow(),
+          const SizedBox(height: 20),
+          _bannerCarousel(),
+          const SizedBox(height: 20),
+          _serviceSection(),
+          const SizedBox(height: 20),
+          _requestsHeader(),
+          const SizedBox(height: 12),
+          if (_loans.isEmpty) _emptyCard() else ..._loans.map((l) => _loanCard(l)).toList(),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // CATEGORY ROW
+  // ---------------------------------------------------------------
+  Widget _categoryRow() {
+    return Row(
+      children: [
+        Expanded(
+            child: _categoryTile(
+                icon: Icons.verified_user_outlined,
+                label: "Verification Requests",
+                onTap: () => _selectTab(1))),
+        const SizedBox(width: 12),
+        Expanded(
+            child: _categoryTile(
+                icon: Icons.history,
+                label: "History",
+                onTap: () => _selectTab(2))),
+        const SizedBox(width: 12),
+        Expanded(
+            child: _categoryTile(
+                icon: Icons.notifications_none,
+                label: "Alerts",
+                onTap: () => _selectTab(3))),
+      ],
+    );
+  }
+
+  Widget _categoryTile({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => LoanDetailScreen(loan: loan),
-          ),
-        ).then((_) {
-          // Refresh data when returning from details page
-          _loadData();
-          _updateUnsyncedCount();
-        });
-      },
+      onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        height: 100,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Chip(
-                  label: Text(loan.processes.isNotEmpty ? "Asset Loan" : "General", style: const TextStyle(fontSize: 12, color: Colors.white)),
-                  backgroundColor: const Color(0xFF000080), // Navy
-                  padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    statusText,
-                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              "Loan #${loan.loanId}",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Beneficiary: ${loan.userId}",
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
-            ),
-            const SizedBox(height: 20),
+            Icon(icon, color: const Color(0xFF1F6FEB), size: 32),
+            const SizedBox(height: 8),
+            Text(label, style: GoogleFonts.inter(fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
 
-            // Progress Bar
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  // ---------------------------------------------------------------
+  // BANNERS, SERVICES, REQUESTS, CARDS (same as before)
+  // ---------------------------------------------------------------
+  Widget _bannerCarousel() {
+    return SizedBox(
+      height: 170,
+      child: PageView.builder(
+        controller: _bannerController,
+        itemCount: _banners.length,
+        onPageChanged: (i) => setState(() => _bannerIndex = i),
+        itemBuilder: (_, i) {
+          final b = _banners[i];
+          final active = i == _bannerIndex;
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 300),
+            padding: EdgeInsets.symmetric(horizontal: active ? 4 : 12),
+            child: GestureDetector(
+              onTap: () => _openUrl(b.url),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    const Text("Verification Progress", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    Text("$percentage%", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    Image.asset(b.asset, fit: BoxFit.cover),
+                    Container(color: Colors.black26),
+                    Positioned(
+                      left: 16,
+                      bottom: 16,
+                      child: Text(
+                        b.title,
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    )
                   ],
                 ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    backgroundColor: Colors.grey[200],
-                    valueColor: const AlwaysStoppedAnimation(Color(0xFF138808)), // Green
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _serviceSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("More Loan Corporations and Schemes",
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16)),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 100,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _services.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) {
+              final s = _services[i];
+              return InkWell(
+                onTap: () => _openUrl(s.url),
+                child: Container(
+                  width: 78,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    children: [
+                      Image.asset(s.asset, height: 38),
+                      const SizedBox(height: 6),
+                      Text(
+                        s.label,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        style: GoogleFonts.inter(fontSize: 11),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ],
+              );
+            },
+          ),
+        )
+      ],
+    );
+  }
+
+  Widget _requestsHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text("My Requests",
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
+        TextButton(onPressed: () {}, child: const Text("View all"))
+      ],
+    );
+  }
+
+  Widget _emptyCard() {
+    return Container(
+      width: double.infinity,
+      height: 140,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+      child: const Center(
+        child: Text("No active loans found"),
+      ),
+    );
+  }
+
+  Widget _loanCard(BeneficiaryLoan loan) {
+    final total = loan.processes.length;
+    final done = loan.processes.where((e) => e.status == "verified").length;
+    final percent = total == 0 ? 0 : ((done / total) * 100).toInt();
+
+    Color col = Colors.orange;
+    String status = "Pending";
+
+    if (percent == 100) {
+      col = Colors.green;
+      status = "Verified";
+    } else if (percent > 0) {
+      col = Colors.blue;
+      status = "In Progress";
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => LoanDetailScreen(loan: loan)),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const CircleAvatar(
+                      radius: 22,
+                      backgroundColor: Color(0xFFEFF6FF),
+                      child: Icon(Icons.inventory_2_outlined, color: Color(0xFF1F6FEB))),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Loan #${loan.loanId}", style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                        Text("Beneficiary: ${loan.userId}", style: GoogleFonts.inter(fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                        color: col.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12)),
+                    child: Text(status, style: GoogleFonts.inter(color: col, fontWeight: FontWeight.w700)),
+                  )
+                ],
+              ),
+
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("Verification Progress", style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  Text("$percent%", style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                ],
+              ),
+              const SizedBox(height: 6),
+
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: LinearProgressIndicator(
+                  value: percent / 100,
+                  minHeight: 8,
+                  backgroundColor: Colors.grey[300],
+                  valueColor: AlwaysStoppedAnimation(col),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // BOTTOM NAVIGATION
+  // ---------------------------------------------------------------
+  Widget _buildBottomNav() {
+    final items = [
+      {'icon': Icons.home_outlined, 'label': 'Home'},
+      {'icon': Icons.pending_actions_outlined, 'label': 'Pending'},
+      {'icon': Icons.history_rounded, 'label': 'History'},
+      {'icon': Icons.notifications_none, 'label': 'Alerts'},
+      {'icon': Icons.help_outline, 'label': 'Help'},
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 20)],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: List.generate(items.length, (i) {
+            final active = i == _selectedIndex;
+
+            return GestureDetector(
+              onTap: () => _selectTab(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: active ? const Color(0xFFEBF4FF) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      height: active ? 42 : 36,
+                      width: active ? 42 : 36,
+                      decoration: BoxDecoration(
+                        color: active ? const Color(0xFF1F6FEB) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: active
+                            ? [
+                          BoxShadow(
+                            color: const Color(0xFF1F6FEB).withOpacity(0.25),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          )
+                        ]
+                            : [],
+                      ),
+                      child: Icon(
+                        items[i]['icon'] as IconData,
+                        color: active ? Colors.white : Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      items[i]['label'] as String,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: active ? const Color(0xFF1F6FEB) : Colors.grey[600],
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            );
+          }),
         ),
       ),
     );

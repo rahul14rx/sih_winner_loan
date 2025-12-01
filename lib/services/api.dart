@@ -1,23 +1,40 @@
 // lib/services/api.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 
-// Change this to your Flask host
-const String kBaseUrl = 'http://10.10.1.99:5000/';
+/// Change this to your Flask backend
+const String kBaseUrl = 'http://10.10.3.219:5001/';
 
 final Connectivity _connectivity = Connectivity();
 
-Future<void> _checkConnectivity() async {
-  var connectivityResult = await _connectivity.checkConnectivity();
-  if (connectivityResult.contains(ConnectivityResult.none)) {
-    final completer = Completer<void>();
-    late StreamSubscription<List<ConnectivityResult>> subscription;
+/// ---------------------------------------------------------------------------
+/// FIXED CONNECTIVITY HANDLER (Connectivity Plus v6 API)
+/// ---------------------------------------------------------------------------
+/// New API:
+///   - checkConnectivity() → Future<List<ConnectivityResult>>
+///   - onConnectivityChanged → Stream<List<ConnectivityResult>>
+///
+/// We always check the FIRST item in the list.
+/// ---------------------------------------------------------------------------
 
-    subscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> result) {
-      if (!result.contains(ConnectivityResult.none)) {
-        subscription.cancel();
+Future<void> _checkConnectivity() async {
+  List<ConnectivityResult> results = await _connectivity.checkConnectivity();
+
+  bool hasNet = results.isNotEmpty && results.first != ConnectivityResult.none;
+
+  if (!hasNet) {
+    final Completer<void> completer = Completer<void>();
+
+    late StreamSubscription<List<ConnectivityResult>> sub;
+
+    sub = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> res) {
+      bool nowOnline = res.isNotEmpty && res.first != ConnectivityResult.none;
+
+      if (nowOnline) {
+        sub.cancel();
         completer.complete();
       }
     });
@@ -26,6 +43,9 @@ Future<void> _checkConnectivity() async {
   }
 }
 
+/// ---------------------------------------------------------------------------
+/// HTTP POST JSON
+/// ---------------------------------------------------------------------------
 Future<Map<String, dynamic>> postJson(
     String path, {
       required Map<String, dynamic> body,
@@ -33,36 +53,38 @@ Future<Map<String, dynamic>> postJson(
       Duration timeout = const Duration(seconds: 15),
     }) async {
   await _checkConnectivity();
+
   final uri = Uri.parse('$kBaseUrl$path');
-  final headers = <String, String>{
+  final headers = {
     'Content-Type': 'application/json',
     if (extraHeaders != null) ...extraHeaders,
   };
 
   try {
-    final resp = await http.post(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
+    final resp =
+    await http.post(uri, headers: headers, body: jsonEncode(body)).timeout(timeout);
 
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
-      if (resp.body.isEmpty) return <String, dynamic>{};
+      if (resp.body.isEmpty) return {};
       return jsonDecode(resp.body) as Map<String, dynamic>;
-    } else {
-      // Server returned an error, return empty map to avoid UI exception
-      return <String, dynamic>{};
     }
-  } catch(e) {
-    // Connection failed, return empty map to avoid UI exception
-    return <String, dynamic>{};
-  }
+  } catch (_) {}
+
+  return {}; // fallback
 }
 
+/// ---------------------------------------------------------------------------
+/// HTTP GET JSON
+/// ---------------------------------------------------------------------------
 Future<Map<String, dynamic>> getJson(
     String path, {
       Map<String, String>? extraHeaders,
       Duration timeout = const Duration(seconds: 15),
     }) async {
   await _checkConnectivity();
+
   final uri = Uri.parse('$kBaseUrl$path');
-  final headers = <String, String>{
+  final headers = {
     'Content-Type': 'application/json',
     if (extraHeaders != null) ...extraHeaders,
   };
@@ -71,19 +93,21 @@ Future<Map<String, dynamic>> getJson(
     final resp = await http.get(uri, headers: headers).timeout(timeout);
 
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
-      if (resp.body.isEmpty) return <String, dynamic>{};
+      if (resp.body.isEmpty) return {};
       return jsonDecode(resp.body) as Map<String, dynamic>;
-    } else {
-      // Server returned an error, return empty map to avoid UI exception
-      return <String, dynamic>{};
     }
-  } catch(e) {
-    // Connection failed, return empty map to avoid UI exception
-    return <String, dynamic>{};
-  }
+  } catch (_) {}
+
+  return {};
 }
 
-Future<Map<String, dynamic>> login_user(String officerId, String password) async {
+/// ---------------------------------------------------------------------------
+/// LOGIN API
+/// ---------------------------------------------------------------------------
+Future<Map<String, dynamic>> login_user(
+    String officerId,
+    String password,
+    ) async {
   return await postJson(
     'login',
     body: {

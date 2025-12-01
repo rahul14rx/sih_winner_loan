@@ -128,7 +128,7 @@ if (_gpsHistory.length < 2) return 0.0; // not enough data
 // compute gps distance over last two points and compare to accel stability
 final a = _gpsHistory[_gpsHistory.length - 2];
 final b = _gpsHistory[_gpsHistory.length - 1];
-final dt = b.timestamp!.millisecondsSinceEpoch - a.timestamp!.millisecondsSinceEpoch;
+final dt = b.timestamp.millisecondsSinceEpoch - a.timestamp.millisecondsSinceEpoch;
 if (dt <= 0) return 0.0;
 final distance = _haversine(a, b); // meters
 final speed = distance / (dt / 1000.0); // m/s according to GPS
@@ -167,7 +167,7 @@ double maxScore = 0.0;
 for (int i = 1; i < _gpsHistory.length; i++) {
 final a = _gpsHistory[i - 1];
 final b = _gpsHistory[i];
-final dt = b.timestamp!.millisecondsSinceEpoch - a.timestamp!.millisecondsSinceEpoch;
+final dt = b.timestamp.millisecondsSinceEpoch - a.timestamp.millisecondsSinceEpoch;
 if (dt <= 0) continue;
 final dist = _haversine(a, b);
 final speed = dist / (dt / 1000.0); // m/s

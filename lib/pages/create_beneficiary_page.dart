@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
 import 'package:loan2/services/sync_service.dart';
-import 'package:loan2/services/encryption_service.dart';
 import 'package:loan2/widgets/officer_nav_bar.dart';
 
 class CreateBeneficiaryPage extends StatefulWidget {
