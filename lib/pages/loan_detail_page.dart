@@ -94,8 +94,8 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
       }
 
       final data = await getJson('loan_details?loan_id=${widget.loanId}');
-
       if (!mounted) return;
+
       final details = data['loan_details'] as Map<String, dynamic>?;
 
       setState(() {
@@ -209,6 +209,100 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     }
   }
 
+  // ----------------- NEW: Dynamic extra rendering -----------------
+
+  Map<String, dynamic> _extraMap() {
+    final raw = _details?['beneficiary_extra'];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return {};
+  }
+
+  String _prettyLabel(String key) {
+    const labels = {
+      'brand_model': 'Brand & Model',
+      'brand': 'Brand',
+      'model': 'Model',
+      'no_of_cows': 'Number of Cows',
+      'institution_name': 'Institution Name',
+      'course_name': 'Course Name',
+      'course_provider_name': 'Course Provider',
+      'course_mode': 'Course Mode',
+      'floors': 'Number of Floors',
+      'stages': 'Stages',
+      'shop_floors': 'Shop Floors',
+      'loan_category': 'Loan Category',
+      'loan_purpose': 'Loan Purpose',
+    };
+
+    if (labels.containsKey(key)) return labels[key]!;
+    // fallback: snake_case -> Title Case
+    return key
+        .replaceAll('_', ' ')
+        .split(' ')
+        .where((w) => w.trim().isNotEmpty)
+        .map((w) => w[0].toUpperCase() + w.substring(1))
+        .join(' ');
+  }
+
+  List<Widget> _buildDynamicExtraRows() {
+    final extra = _extraMap();
+
+    // remove empties
+    extra.removeWhere((k, v) => v == null || v.toString().trim().isEmpty);
+
+    // don’t repeat fields already shown in the main card
+    const alreadyShown = {
+      'loan_id',
+      'user_id',
+      'loan_officer_id',
+      'applicant_name',
+      'amount',
+      'scheme',
+      'loan_type',
+      'loan_category',
+      'loan_purpose',
+      'date_applied',
+      'status',
+      'process',
+      'stage_utilization',
+      'beneficiary_address',
+      'asset_purchased',
+      'beneficiary_extra',
+    };
+
+    // also avoid duplicates: if backend sends loan_category/loan_purpose inside extra
+    extra.removeWhere((k, _) => alreadyShown.contains(k));
+
+    if (extra.isEmpty) return const [];
+
+    // preferred order for your new fields (anything else will appear after)
+    const preferred = [
+      'brand_model',
+      'no_of_cows',
+      'institution_name',
+      'course_mode',
+      'course_name',
+      'course_provider_name',
+      'floors',
+      'stages',
+      'shop_floors',
+    ];
+
+    final orderedKeys = <String>[];
+    for (final k in preferred) {
+      if (extra.containsKey(k)) orderedKeys.add(k);
+    }
+    final remaining = extra.keys.where((k) => !orderedKeys.contains(k)).toList()..sort();
+    orderedKeys.addAll(remaining);
+
+    return orderedKeys.map((k) {
+      final v = extra[k].toString();
+      return _buildDetailRow(_prettyLabel(k), v, wrapValue: true);
+    }).toList();
+  }
+
+  // ----------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -296,6 +390,12 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
 
   Widget _buildDetailsCard() {
     final loanPurpose = (_details!['loan_purpose'] ?? 'N/A').toString();
+    final loanCategory = (_details!['loan_category'] ?? '').toString().trim();
+
+    final beneficiaryAddress = (_details!['beneficiary_address'] ?? '').toString().trim();
+    final assetPurchased = (_details!['asset_purchased'] ?? '').toString().trim();
+
+    final extraRows = _buildDynamicExtraRows();
 
     return Card(
       elevation: 2,
@@ -311,8 +411,24 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
             _buildDetailRow("Loan ID", (_details!['loan_id'] ?? 'N/A').toString()),
             _buildDetailRow("Amount", "₹${_details!['amount']?.toString() ?? '0'}"),
             _buildDetailRow("Scheme", (_details!['scheme'] ?? 'N/A').toString()),
+
+            if (loanCategory.isNotEmpty) _buildDetailRow("Loan Category", loanCategory, wrapValue: true),
+
             _buildDetailRow("Loan Type", (_details!['loan_type'] ?? 'N/A').toString(), wrapValue: true),
             _buildDetailRow("Loan Purpose", loanPurpose, wrapValue: true),
+
+            if (beneficiaryAddress.isNotEmpty)
+              _buildDetailRow("Beneficiary Address", beneficiaryAddress, wrapValue: true),
+
+            if (assetPurchased.isNotEmpty)
+              _buildDetailRow("Asset Purchased", assetPurchased, wrapValue: true),
+
+            // ✅ NEW: show only the extra fields that exist
+            if (extraRows.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              ...extraRows,
+            ],
+
             _buildDetailRow("Applied On", (_details!['date_applied'] ?? 'N/A').toString()),
             _buildDetailRow("Overall Status", (_details!['status'] ?? 'N/A').toString(), highlight: true),
           ],
@@ -358,7 +474,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                 value,
                 textAlign: TextAlign.right,
                 style: valueStyle,
-                maxLines: wrapValue ? 2 : 1,
+                maxLines: wrapValue ? 3 : 1,
                 overflow: TextOverflow.ellipsis,
                 softWrap: wrapValue,
               ),

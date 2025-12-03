@@ -1,7 +1,15 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
 import '../services/api.dart';
+import '../services/sync_service.dart';
 import 'loan_detail_page.dart';
 import 'package:loan2/widgets/officer_nav_bar.dart';
 
@@ -36,10 +44,37 @@ class _LoanRow {
     this.scheme = "",
     this.loanPurpose = "",
   });
+
+  Map<String, dynamic> toJson() => {
+    "loan_id": loanId,
+    "applicant_name": applicantName,
+    "amount": amount,
+    "loan_type": loanType,
+    "status": status,
+    "date_applied": dateApplied,
+    "user_id": userId,
+    "scheme": scheme,
+    "loan_purpose": loanPurpose,
+  };
+
+  static _LoanRow fromJson(Map<String, dynamic> e) {
+    return _LoanRow(
+      loanId: (e["loan_id"] ?? "").toString(),
+      applicantName: (e["applicant_name"] ?? "Beneficiary").toString(),
+      amount: (e["amount"] is num)
+          ? (e["amount"] as num).toDouble()
+          : double.tryParse("${e["amount"] ?? 0}") ?? 0.0,
+      loanType: (e["loan_type"] ?? "Loan").toString(),
+      status: (e["status"] ?? "").toString(),
+      dateApplied: (e["date_applied"] ?? "N/A").toString(),
+      userId: (e["user_id"] ?? "").toString(),
+      scheme: (e["scheme"] ?? "").toString(),
+      loanPurpose: (e["loan_purpose"] ?? "").toString(),
+    );
+  }
 }
 
 class _HistoryPageState extends State<HistoryPage> {
-  // Keep brand accents
   static const _accent = Color(0xFF1E5AA8);
   static const double _headerRadius = 25;
 
@@ -54,22 +89,114 @@ class _HistoryPageState extends State<HistoryPage> {
 
   static const List<String> _schemeOptions = ["NSKFDC", "NBCFDC", "NSFDC"];
 
+  StreamSubscription<bool>? _syncSub;
+  StreamSubscription<bool>? _onlineSub;
+
   @override
   void initState() {
     super.initState();
-    _load();
+
     _q.addListener(() {
       if (!mounted) return;
       setState(() {});
     });
+
+    _syncSub = SyncService.onSync.listen((_) {
+      if (!mounted) return;
+      _load();
+    });
+
+    _onlineSub = SyncService.onOnlineStatusChanged.listen((online) {
+      if (!mounted) return;
+      if (online) _load();
+    });
+
+    _load();
   }
 
   @override
   void dispose() {
     _q.dispose();
+    _syncSub?.cancel();
+    _onlineSub?.cancel();
     super.dispose();
   }
 
+  String _safeOfficerKey() {
+    final raw = widget.officerId.trim();
+    return raw.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), "_");
+  }
+
+  Future<File> _getCacheFile() async {
+    final docs = await getApplicationDocumentsDirectory();
+    return File(p.join(docs.path, 'history_snapshot_${_safeOfficerKey()}.json'));
+  }
+
+  Future<void> _writeSnapshot(List<_LoanRow> rows) async {
+    try {
+      final f = await _getCacheFile();
+      final payload = {
+        "cached_at": DateTime.now().toIso8601String(),
+        "officer_id": widget.officerId.trim(),
+        "data": rows.map((e) => e.toJson()).toList(),
+      };
+      await f.writeAsString(jsonEncode(payload));
+    } catch (e) {
+      debugPrint("History snapshot write failed: $e");
+    }
+  }
+
+  Future<void> _loadFromSnapshot({bool showSnack = true}) async {
+    try {
+      final f = await _getCacheFile();
+      if (!await f.exists()) {
+        if (!mounted) return;
+        setState(() {
+          _all = [];
+          _loading = false;
+        });
+        if (showSnack) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Offline: No history snapshot available yet."),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final raw = await f.readAsString();
+      final decoded = jsonDecode(raw);
+      final List list = (decoded is Map ? (decoded["data"] ?? []) : []) as List;
+
+      final rows = list
+          .whereType<Map>()
+          .map((m) => _LoanRow.fromJson(Map<String, dynamic>.from(m)))
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _all = rows;
+        _loading = false;
+      });
+
+      if (showSnack) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Offline: Showing saved history snapshot."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("History snapshot load failed: $e");
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  // ✅ FIX: use /bank/loans like your old history behaviour
   Future<List<_LoanRow>> _fetchList(String status) async {
     final oid = Uri.encodeComponent(widget.officerId.trim());
     final res = await getJson("bank/loans?officer_id=$oid&status=$status");
@@ -91,9 +218,12 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _attachSchemesAndPurposeInBatches(List<_LoanRow> loans) async {
+    final needFix = loans.where((l) => l.scheme.trim().isEmpty || l.loanPurpose.trim().isEmpty).toList();
+    if (needFix.isEmpty) return;
+
     const batchSize = 8;
-    for (int i = 0; i < loans.length; i += batchSize) {
-      final chunk = loans.sublist(i, min(i + batchSize, loans.length));
+    for (int i = 0; i < needFix.length; i += batchSize) {
+      final chunk = needFix.sublist(i, min(i + batchSize, needFix.length));
       await Future.wait(chunk.map((l) async {
         try {
           final d = await getJson("bank/loan/${l.loanId}");
@@ -108,26 +238,39 @@ class _HistoryPageState extends State<HistoryPage> {
           if (lp.isNotEmpty) l.loanPurpose = lp;
         } catch (_) {}
       }));
+
       if (!mounted) return;
       setState(() {});
+      await _writeSnapshot(_all);
     }
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _loading = true);
+
+    final online = await SyncService.realInternetCheck();
+    if (!online) {
+      await _loadFromSnapshot(showSnack: true);
+      return;
+    }
+
     try {
       final results = await Future.wait([
         _fetchList("verified"),
         _fetchList("rejected"),
       ]);
+
       _all = <_LoanRow>[...results[0], ...results[1]];
       if (!mounted) return;
       setState(() => _loading = false);
 
+      await _writeSnapshot(_all);
       await _attachSchemesAndPurposeInBatches(_all);
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
+      await _loadFromSnapshot(showSnack: true);
     }
   }
 

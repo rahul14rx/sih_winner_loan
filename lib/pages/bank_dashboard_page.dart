@@ -1,19 +1,31 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:convert';
+import 'dart:io';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:loan2/services/database_helper.dart';
+import 'package:loan2/services/sync_service.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:loan2/services/bank_service.dart';
+import 'package:http/http.dart' as http;
 import 'package:loan2/models/loan_application.dart';
-import 'package:loan2/pages/loan_detail_page.dart';
 import 'package:loan2/pages/create_beneficiary_page.dart';
 import 'package:loan2/pages/help_support_page.dart';
 import 'package:loan2/pages/history_page.dart';
-import 'package:loan2/pages/reports_page.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:loan2/pages/profile_settings_page.dart';
-import 'dart:async';
-import 'package:loan2/widgets/officer_nav_bar.dart';
-import 'package:loan2/services/app_theme.dart';
+import 'package:loan2/pages/loan_detail_page.dart';
 import 'package:loan2/pages/login_page.dart';
+import 'package:loan2/pages/profile_settings_page.dart';
+import 'package:loan2/pages/reports_page.dart';
+import 'package:loan2/services/api.dart';
+import 'package:loan2/services/app_theme.dart';
+import 'package:loan2/services/bank_service.dart';
+import 'package:loan2/services/database_helper.dart';
+import 'package:loan2/services/sync_service.dart';
 import 'package:loan2/services/theme_ext.dart';
+import 'package:loan2/widgets/officer_nav_bar.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 enum _UserMenu { profile, settings, logout }
 
@@ -42,6 +54,16 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   int _bannerIndex = 0;
   Timer? _bannerTimer;
 
+  // -------------------- OFFLINE SYNC + SNAPSHOT STATE (ADDED) --------------------
+  bool _isOnline = true;
+  int _offlineCount = 0;
+  StreamSubscription<bool>? _onlineSub;
+  StreamSubscription<bool>? _syncSub;
+
+  // cache: loanId -> snapshot future, so cards don't refetch every rebuild
+  final Map<String, Future<String?>> _snapshotFuture = {};
+  // -----------------------------------------------------------------------------
+
   final List<_BannerItem> _banners = const [
     _BannerItem(asset: 'assets/banners/banner1.png', url: 'https://www.india.gov.in/'),
     _BannerItem(asset: 'assets/banners/banner2.png', url: 'https://www.myscheme.gov.in/'),
@@ -63,8 +85,16 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   void initState() {
     super.initState();
 
-    _loadData();
+    SyncService.startListener(); // starts online/offline listener globally
+
+    _loadSnapshot(); // show last data immediately if available
+    _loadData();     // then fetch fresh if online
     _loadOfficerName();
+
+
+    // -------------------- OFFLINE SYNC LISTENERS (ADDED) --------------------
+    _initOfflineSync();
+    // -----------------------------------------------------------------------
 
     _pageController.addListener(() {
       final p = _pageController.page;
@@ -89,11 +119,139 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     _bannerTimer?.cancel();
     _pageController.dispose();
     _scroll.dispose();
+
+    // -------------------- OFFLINE SYNC CLEANUP (ADDED) --------------------
+    _onlineSub?.cancel();
+    _syncSub?.cancel();
+    // ---------------------------------------------------------------------
+
     super.dispose();
   }
 
+  // -------------------- OFFLINE SYNC + SNAPSHOT HELPERS (ADDED) --------------------
+
+  Future<void> _initOfflineSync() async {
+    try {
+      final online = await SyncService.realInternetCheck();
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+    } catch (_) {}
+
+    await _refreshOfflineCount();
+
+    _onlineSub = SyncService.onOnlineStatusChanged.listen((online) async {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+
+      await _refreshOfflineCount();
+
+      if (online) {
+        try {
+          await SyncService.syncAll();
+        } catch (_) {}
+
+        await _refreshOfflineCount();
+
+        if (!mounted) return;
+        // refresh dashboard data + snapshots after sync
+        _snapshotFuture.clear();
+        _loadData();
+      }
+    });
+
+    _syncSub = SyncService.onSync.listen((_) async {
+      await _refreshOfflineCount();
+      if (!mounted) return;
+      _snapshotFuture.clear();
+      _loadData();
+    });
+  }
+
+  Future<void> _refreshOfflineCount() async {
+    try {
+      final c = await DatabaseHelper.instance.getQueuedForUploadCount();
+      if (!mounted) return;
+      setState(() => _offlineCount = c);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _offlineCount = 0);
+    }
+  }
+
+  Future<String?> _snapshotUrlForLoan(String loanId) {
+    return _snapshotFuture.putIfAbsent(loanId, () async {
+      if (!_isOnline) return null;
+
+      try {
+        final resp = await http
+            .get(Uri.parse('${kBaseUrl}loan_details?loan_id=$loanId'))
+            .timeout(const Duration(seconds: 15));
+
+        if (resp.statusCode != 200) return null;
+
+        final decoded = jsonDecode(resp.body);
+        if (decoded is! Map) return null;
+
+        Map<String, dynamic>? details;
+        final ld = decoded['loan_details'];
+        if (ld is Map) {
+          details = Map<String, dynamic>.from(ld as Map);
+        } else if (decoded['data'] is Map) {
+          details = Map<String, dynamic>.from(decoded['data'] as Map);
+        } else {
+          // sometimes backend returns the object at root
+          details = Map<String, dynamic>.from(decoded);
+        }
+
+        final processes = details['process'];
+        if (processes is! List) return null;
+
+        for (final item in processes) {
+          if (item is! Map) continue;
+
+          final mediaUrl = (item['media_url'] ?? item['mediaUrl'] ?? item['media'] ?? '').toString().trim();
+          if (mediaUrl.isNotEmpty) return mediaUrl;
+
+          final fileId = item['file_id'] ?? item['fileId'];
+          if (fileId != null && fileId.toString().trim().isNotEmpty) {
+            return '${kBaseUrl}media/${fileId.toString().trim()}';
+          }
+        }
+        return null;
+      } catch (_) {
+        return null;
+      }
+    });
+  }
+
+  Widget _syncChip(Color blue) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.14)),
+      ),
+      child: Icon(
+        _isOnline ? Icons.wifi : Icons.wifi_off,
+        color: _isOnline ? Colors.greenAccent : Colors.redAccent,
+        size: 18,
+      ),
+    );
+  }
+
+
+  // ---------------------------------------------------------------------------
+
   Future<void> _loadData() async {
     try {
+      final online = await SyncService.realInternetCheck();
+      if (!online) {
+        final ok = await _loadSnapshot();
+        if (!ok && mounted) setState(() => _isLoading = false);
+        return;
+      }
+
       final statsFuture = _bankService.fetchDashboardStats(widget.officerId);
       final loansFuture = _bankService.fetchPendingLoans(widget.officerId);
       final results = await Future.wait([statsFuture, loansFuture]);
@@ -103,7 +261,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
         _stats = results[0] as Map<String, int>;
         _loans = results[1] as List<LoanApplication>;
         _isLoading = false;
-      });
+
+      });await _saveSnapshot();
+
     } catch (e) {
       debugPrint("Dashboard Load Error: $e");
       if (mounted) setState(() => _isLoading = false);
@@ -139,6 +299,56 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   }
 
   static const double _reviewsCardH = 225.0;
+  Future<File> _cacheFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File(p.join(dir.path, 'dashboard_cache_${widget.officerId}.json'));
+  }
+
+  Future<void> _saveSnapshot() async {
+    try {
+      final f = await _cacheFile();
+      final payload = {
+        "stats": _stats,
+        "loans": _loans.map((e) => e.toJson()).toList(),
+        "saved_at": DateTime.now().millisecondsSinceEpoch,
+      };
+      await f.writeAsString(jsonEncode(payload));
+    } catch (_) {}
+  }
+
+  Future<bool> _loadSnapshot() async {
+    try {
+      final f = await _cacheFile();
+      if (!await f.exists()) return false;
+
+      final raw = await f.readAsString();
+      final m = jsonDecode(raw);
+
+      final statsRaw = (m is Map) ? m["stats"] : null;
+      final loansRaw = (m is Map) ? m["loans"] : null;
+
+      if (statsRaw is! Map || loansRaw is! List) return false;
+
+      final stats = Map<String, int>.from(
+        statsRaw.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+      );
+
+      final loans = loansRaw
+          .whereType<Map>()
+          .map((e) => LoanApplication.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+
+      if (!mounted) return true;
+      setState(() {
+        _stats = stats;
+        _loans = loans;
+        _isLoading = false;
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> _openUrl(String url) async {
     final u = Uri.parse(url);
@@ -199,8 +409,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
 
               return CustomScrollView(
                 controller: _scroll,
-                physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics()),
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                 slivers: [
                   SliverToBoxAdapter(
                     child: _buildTopHeaderAndReviews(blue, pad, w),
@@ -246,18 +455,15 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                           ),
                           const Spacer(),
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
                               color: blue.withOpacity(0.10),
                               borderRadius: BorderRadius.circular(999),
-                              border:
-                              Border.all(color: blue.withOpacity(0.18)),
+                              border: Border.all(color: blue.withOpacity(0.18)),
                             ),
                             child: Text(
                               "${pendingItems.length}",
-                              style: GoogleFonts.inter(
-                                  fontWeight: FontWeight.w900, color: blue),
+                              style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: blue),
                             ),
                           ),
                         ],
@@ -288,8 +494,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
           ),
         ),
       ),
-      bottomNavigationBar:
-      OfficerNavBar(currentIndex: 0, officerId: widget.officerId),
+      bottomNavigationBar: OfficerNavBar(currentIndex: 0, officerId: widget.officerId),
     );
   }
 
@@ -336,8 +541,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                           'assets/logo.png',
                           width: 22,
                           height: 22,
-                          errorBuilder: (_, __, ___) => const Icon(
-                              Icons.gavel_rounded, color: Colors.white),
+                          errorBuilder: (_, __, ___) => const Icon(Icons.gavel_rounded, color: Colors.white),
                         ),
                       ),
                     ),
@@ -362,25 +566,27 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                   ),
                   child: IconButton(
                     onPressed: () {},
-                    icon: const Icon(Icons.notifications_none_rounded,
-                        color: Colors.white),
+                    icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
                   ),
                 ),
+
+                // -------------------- SYNC/QUEUE INDICATOR (ADDED) --------------------
+                const SizedBox(width: 10),
+                _syncChip(blue),
+                // --------------------------------------------------------------------
+
                 const SizedBox(width: 10),
                 PopupMenuButton<_UserMenu>(
                   offset: const Offset(0, 44),
                   elevation: 10,
-                  shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   onSelected: (value) {
                     switch (value) {
                       case _UserMenu.profile:
                       case _UserMenu.settings:
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  ProfileSettingsPage(officerId: widget.officerId)),
+                          MaterialPageRoute(builder: (_) => ProfileSettingsPage(officerId: widget.officerId)),
                         );
                         break;
                       case _UserMenu.logout:
@@ -458,11 +664,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                       radius: 18,
                       backgroundColor: Colors.white,
                       child: Text(
-                        widget.officerId.isNotEmpty
-                            ? widget.officerId.substring(0, 2).toUpperCase()
-                            : "OF",
-                        style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w800, color: blue),
+                        widget.officerId.isNotEmpty ? widget.officerId.substring(0, 2).toUpperCase() : "OF",
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: blue),
                       ),
                     ),
                   ),
@@ -489,8 +692,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
               child: TextField(
                 onChanged: (v) => setState(() => _reviewQuery = v),
                 style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white : const Color(0xFF111827)),
+                    fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF111827)),
                 decoration: InputDecoration(
                   hintText: "Search reviews",
                   hintStyle: GoogleFonts.inter(
@@ -498,11 +700,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                     fontWeight: FontWeight.w700,
                   ),
                   border: InputBorder.none,
-                  contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  prefixIcon: Icon(Icons.search_rounded,
-                      color:
-                      isDark ? const Color(0xFF9CA3AF) : Colors.grey[500]),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  prefixIcon: Icon(Icons.search_rounded, color: isDark ? const Color(0xFF9CA3AF) : Colors.grey[500]),
                 ),
               ),
             ),
@@ -526,8 +725,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     final titleColor = isDark ? Colors.white : const Color(0xFF111827);
     final muted = isDark ? Colors.white70 : Colors.grey[700];
 
-    final displayName =
-    _officerName.trim().isNotEmpty ? _officerName.trim() : widget.officerId;
+    final displayName = _officerName.trim().isNotEmpty ? _officerName.trim() : widget.officerId;
 
     return Container(
       height: _reviewsCardH,
@@ -611,8 +809,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => HistoryPage(officerId: widget.officerId)),
+                MaterialPageRoute(builder: (_) => HistoryPage(officerId: widget.officerId)),
               );
             },
           ),
@@ -626,8 +823,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => HistoryPage(officerId: widget.officerId)),
+                MaterialPageRoute(builder: (_) => HistoryPage(officerId: widget.officerId)),
               );
             },
           ),
@@ -743,9 +939,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                           child: Center(
                             child: Text(
                               "Banner ${i + 1}",
-                              style: GoogleFonts.poppins(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700),
+                              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700),
                             ),
                           ),
                         ),
@@ -783,8 +977,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
 
     final card = Theme.of(context).cardColor;
     final border = context.appBorder;
-    final titleColor =
-    Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF111827);
+    final titleColor = Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF111827);
 
     return SizedBox(
       height: 88,
@@ -880,14 +1073,14 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                  builder: (_) => LoanDetailPage(loanId: loan.loanId)),
+              MaterialPageRoute(builder: (_) => LoanDetailPage(loanId: loan.loanId)),
             ).then((_) => _loadData());
           },
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
+                // -------------------- SNAPSHOT THUMBNAIL (ADDED) --------------------
                 Container(
                   width: 50,
                   height: 50,
@@ -895,17 +1088,44 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                     color: const Color(0xFF0F1B2D),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Center(
-                    child: Text(
-                      loan.applicantName.isNotEmpty ? loan.applicantName[0] : "?",
-                      style: GoogleFonts.poppins(
-                        color: const Color(0xFF60A5FA),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
-                      ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: FutureBuilder<String?>(
+                      future: _snapshotUrlForLoan(loan.loanId),
+                      builder: (context, snap) {
+                        final url = (snap.data ?? "").trim();
+                        if (url.isNotEmpty) {
+                          return Image.network(
+                            url,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Text(
+                                loan.applicantName.isNotEmpty ? loan.applicantName[0] : "?",
+                                style: GoogleFonts.poppins(
+                                  color: const Color(0xFF60A5FA),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 20,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+                        return Center(
+                          child: Text(
+                            loan.applicantName.isNotEmpty ? loan.applicantName[0] : "?",
+                            style: GoogleFonts.poppins(
+                              color: const Color(0xFF60A5FA),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
+                // -------------------------------------------------------------------
+
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -923,8 +1143,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: chipBg,
                               borderRadius: BorderRadius.circular(6),
@@ -952,8 +1171,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                     ],
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios_rounded,
-                    size: 16, color: subColor.withOpacity(0.4)),
+                Icon(Icons.arrow_forward_ios_rounded, size: 16, color: subColor.withOpacity(0.4)),
               ],
             ),
           ),
@@ -978,8 +1196,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.check_circle_outline_rounded,
-              size: 70, color: subColor.withOpacity(0.25)),
+          Icon(Icons.check_circle_outline_rounded, size: 70, color: subColor.withOpacity(0.25)),
           const SizedBox(height: 14),
           Text(
             "All caught up!",

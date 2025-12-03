@@ -1,24 +1,13 @@
-// lib/services/sync_service.dart — FIXED for connectivity_plus v6
-
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:geolocator/geolocator.dart';
-
 import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
-import 'package:loan2/services/location_security_service.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SyncService {
-  // ---------------- Singleton ----------------
-  SyncService._internal() {
-    _locSec = LocationSecurityService();
-  }
-  static final SyncService instance = SyncService._internal();
-
-  // ---------------- Streams ----------------
   static final _syncController = StreamController<bool>.broadcast();
   static final _onlineStatusController = StreamController<bool>.broadcast();
   static final _itemSyncedController = StreamController<Map<String, String>>.broadcast();
@@ -27,279 +16,215 @@ class SyncService {
   static Stream<bool> get onOnlineStatusChanged => _onlineStatusController.stream;
   static Stream<Map<String, String>> get onItemSynced => _itemSyncedController.stream;
 
-  // ---------------- Connectivity (FIXED) ----------------
   static StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-
   static bool _isOnline = false;
 
-  // ---------------- Locations ----------------
-  late LocationSecurityService _locSec;
-
-  // =============================================================
-  // Instance API — Used by Wizard
-  // =============================================================
-
-  Future<bool> syncNow() async {
-    try {
-      await SyncService.syncAll();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// CURRENT LOCATION (Confidence-based)
-  Future<Map<String, dynamic>?> getCurrentLocation({Duration timeout = const Duration(seconds: 5)}) async {
-    try {
-      await _locSec.start();
-    } catch (_) {}
-
-    bool enabled = await Geolocator.isLocationServiceEnabled();
-    if (!enabled) return null;
-
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
-    }
-    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-      return null;
-    }
-
-    try {
-      final pos =
-      await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
-          .timeout(timeout);
-
-      final eval = await _locSec.evaluate(pos);
-
-      if (eval.isMocked) return null;
-
-      return {
-        "latitude": pos.latitude,
-        "longitude": pos.longitude,
-        "confidence": eval.confidence,
-      };
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<Map<String, dynamic>?> realLocation() async => await getCurrentLocation();
-
-  // =============================================================
-  // Static Sync Engine
-  // =============================================================
-
-  /// LISTENER — FIXED FOR NEW CONNECTIVITY API
   static void startListener() {
     print("🔄 Sync Listener Started...");
-
     _connectivitySubscription?.cancel();
 
-    _connectivitySubscription =
-        Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) async {
-          bool hasNet = results.isNotEmpty && results.first != ConnectivityResult.none;
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) async {
+      bool isDeviceConnected = !results.contains(ConnectivityResult.none);
+      bool canReachServer = isDeviceConnected ? await realInternetCheck() : false;
 
-          bool serverOk = hasNet ? await realInternetCheck() : false;
+      if (canReachServer != _isOnline) {
+        _isOnline = canReachServer;
+        _onlineStatusController.add(_isOnline);
+        print("🌐 Connection Status Changed: ${_isOnline ? "Online" : "Offline"}");
 
-          if (serverOk != _isOnline) {
-            _isOnline = serverOk;
-            _onlineStatusController.add(_isOnline);
-
-            print("🌐 Connection Status: ${_isOnline ? "ONLINE" : "OFFLINE"}");
-
-            if (_isOnline) {
-              print("🚀 Auto-sync triggered...");
-              await syncAll();
-            }
-          }
-        });
-
+        if (_isOnline) {
+          print("🚀 Now online, attempting to sync...");
+          await syncAll();
+        }
+      }
+    });
     _initialCheck();
   }
 
   static Future<void> _initialCheck() async {
     _isOnline = await realInternetCheck();
     _onlineStatusController.add(_isOnline);
-
     if (_isOnline) {
       await syncAll();
     }
   }
 
-  // ---------------- Server Check ----------------
   static Future<bool> realInternetCheck() async {
     try {
-      final r = await http.get(Uri.parse('${kBaseUrl}health'))
-          .timeout(const Duration(seconds: 3));
-
-      return r.statusCode >= 200 && r.statusCode < 300;
-    } catch (_) {
-      try {
-        final r2 = await http.head(Uri.parse(kBaseUrl))
-            .timeout(const Duration(seconds: 3));
-        return r2.statusCode >= 200 && r2.statusCode < 300;
-      } catch (_) {
-        return false;
-      }
+      final response = await http.head(Uri.parse(kBaseUrl)).timeout(const Duration(seconds: 3));
+      return response.statusCode >= 200 && response.statusCode < 500;
+    } catch (e) {
+      return false;
     }
   }
-
-  // =============================================================
-  // FULL SYNC
-  // =============================================================
 
   static Future<void> syncAll() async {
     await syncBeneficiaries();
     await syncImages();
-    await syncOfficerActions();
-
-    try {
-      _syncController.add(true);
-    } catch (_) {}
+    await syncOfficerActions(); // New Sync Step
   }
-
-  // =============================================================
-  // SYNC: Verification Images
-  // =============================================================
 
   static Future<void> syncImages() async {
-    final data = await DatabaseHelper.instance.getQueuedForUpload();
+    List<Map<String, dynamic>> data = await DatabaseHelper.instance.getQueuedForUpload();
     if (data.isEmpty) return;
-
-    print("📂 Found ${data.length} files to sync...");
+    
+    print("📂 Found ${data.length} verification items to sync...");
+    bool wasSynced = false;
 
     for (var row in data) {
-      final dbId = row[DatabaseHelper.colId];
-      final loanId = row[DatabaseHelper.colLoanId];
-      final processId = row[DatabaseHelper.colProcessId];
-      final userId = row[DatabaseHelper.colUserId];
-      final filePath = row[DatabaseHelper.colFilePath];
+      final dbId = row[DatabaseHelper.colId] as int?;
+      final loanId = row[DatabaseHelper.colLoanId] as String?;
+      final processId = row[DatabaseHelper.colProcessId] as String?;
+      final userId = row[DatabaseHelper.colUserId] as String?;
+      final filePath = row[DatabaseHelper.colFilePath] as String?;
 
-      if (dbId == null || loanId == null || processId == null || userId == null || filePath == null) {
-        continue;
-      }
+      if (dbId == null || loanId == null || processId == null || filePath == null || userId == null) continue;
 
-      final req = http.MultipartRequest("POST", Uri.parse('${kBaseUrl}upload'));
+      String ext = p.extension(filePath).toLowerCase();
+      if (ext.isEmpty) ext = '.jpg';
 
-      final util = row[DatabaseHelper.colUtilizationAmount];
-      final lat = row[DatabaseHelper.colLatitude];
-      final lng = row[DatabaseHelper.colLongitude];
-      final conf = row[DatabaseHelper.colLocationConfidence];
+      print("⬆️ Syncing Verification ($ext): Loan $loanId, Step $processId");
 
-      if (util != null) req.fields["utilization_amount"] = util;
-      if (lat != null) req.fields["latitude"] = lat;
-      if (lng != null) req.fields["longitude"] = lng;
-      if (conf != null) req.fields["location_confidence"] = conf;
-
-      req.fields["loan_id"] = loanId;
-      req.fields["process_id"] = processId;
-      req.fields["user_id"] = userId;
-
+      var request = http.MultipartRequest("POST", Uri.parse('${kBaseUrl}upload'));
+      
       try {
-        req.files.add(await http.MultipartFile.fromPath(
-          'file',
-          filePath,
-          filename: "sync_${loanId}_${processId}${p.extension(filePath)}",
+        // No Decryption logic as requested. Use raw file directly.
+        String cleanFilename = "sync_${loanId}_$processId$ext";
+        request.files.add(await http.MultipartFile.fromPath(
+             'file',
+             filePath,
+             filename: cleanFilename
         ));
-      } catch (_) {
-        continue;
-      }
 
-      try {
-        final resp = await req.send().timeout(const Duration(seconds: 40));
+        request.fields["process_id"] = processId;
+        request.fields["loan_id"] = loanId;
+        request.fields["user_id"] = userId;
 
-        if (resp.statusCode >= 200 && resp.statusCode < 300) {
-          print("✅ Synced image: $dbId");
+        var response = await request.send();
+        if (response.statusCode == 200) {
+          print("✅ Sync Success for Verification ID $dbId");
           await DatabaseHelper.instance.deleteImage(dbId, deleteFile: true);
-
-          try {
-            _itemSyncedController.add({"loanId": loanId, "processId": processId});
-          } catch (_) {}
+          wasSynced = true;
+          _itemSyncedController.add({'loanId': loanId, 'processId': processId});
         } else {
-          print("❌ Server Error while syncing $dbId");
+          print("❌ Server Error (${response.statusCode})");
         }
       } catch (e) {
-        print("❌ Sync error for $dbId: $e");
+        print("❌ Error during sync: $e");
       }
     }
 
-    try {
-      _syncController.add(true);
-    } catch (_) {}
+    if (wasSynced) _syncController.add(true);
   }
-
-  // =============================================================
-  // SYNC: Beneficiaries
-  // =============================================================
 
   static Future<void> syncBeneficiaries() async {
-    final rows = await DatabaseHelper.instance.getPendingBeneficiaries();
-    if (rows.isEmpty) return;
+    List<Map<String, dynamic>> data = await DatabaseHelper.instance.getPendingBeneficiaries();
+    if (data.isEmpty) return;
 
-    for (var row in rows) {
-      final dbId = row[DatabaseHelper.colId];
+    bool wasSynced = false;
 
-      final req = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}bank/beneficiary'));
+    for (var row in data) {
+      final dbId = row[DatabaseHelper.colId] as int?;
 
-      row.forEach((key, value) {
-        if (value != null && key != DatabaseHelper.colDocPath && key != DatabaseHelper.colId) {
-          req.fields[key] = value.toString();
-        }
+      final officerId = row[DatabaseHelper.colOfficerId] as String?;
+      final name = row[DatabaseHelper.colName] as String?;
+      final phone = row[DatabaseHelper.colPhone] as String?;
+      final amount = row[DatabaseHelper.colAmount] as String?;
+      final loanId = row[DatabaseHelper.colLoanId] as String?;
+      final scheme = row[DatabaseHelper.colScheme] as String?;
+      final loanType = row[DatabaseHelper.colLoanType] as String?;
+      final docPath = row[DatabaseHelper.colDocPath] as String?;
+      final address = row[DatabaseHelper.colAddress] as String?;
+      final asset = row[DatabaseHelper.colAsset] as String?;
+
+      // ✅ NEW: dynamic fields bundle (JSON)
+      final extraJson = row[DatabaseHelper.colExtraJson] as String?;
+      Map<String, dynamic> extra = {};
+      if (extraJson != null && extraJson.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(extraJson);
+          if (decoded is Map) {
+            extra = Map<String, dynamic>.from(decoded);
+          }
+        } catch (_) {}
+      }
+
+      if (dbId == null || name == null || loanId == null) continue;
+
+      var request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}bank/beneficiary'));
+      request.fields['officer_id'] = officerId ?? "";
+      request.fields['name'] = name;
+      request.fields['phone'] = phone ?? "";
+      request.fields['amount'] = amount ?? "";
+      request.fields['loan_id'] = loanId;
+      request.fields['scheme'] = scheme ?? "";
+      request.fields['loan_type'] = loanType ?? "";
+
+      // keep old fields so current backend still accepts it
+      request.fields['beneficiary_address'] = address ?? "";
+      request.fields['asset_purchased'] = asset ?? "";
+
+      // ✅ NEW: merge extra dynamic fields into request.fields
+      extra.forEach((k, v) {
+        if (v == null) return;
+        final key = k.toString().trim();
+        final val = v.toString().trim();
+        if (key.isEmpty || val.isEmpty) return;
+        request.fields[key] = val; // extra can override if needed
       });
 
-      if (row[DatabaseHelper.colDocPath] != null) {
+      if (docPath != null && docPath.isNotEmpty) {
         try {
-          req.files.add(await http.MultipartFile.fromPath(
-            'loan_document',
-            row[DatabaseHelper.colDocPath],
-          ));
+          request.files.add(await http.MultipartFile.fromPath('loan_agreement', docPath));
         } catch (e) {
-          print("⚠️ Could not attach doc: $e");
+          print("⚠️ Could not attach file for sync: $e");
         }
       }
 
       try {
-        final resp = await req.send().timeout(const Duration(seconds: 30));
-
-        if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        var response = await request.send();
+        if (response.statusCode == 201) {
           await DatabaseHelper.instance.deletePendingBeneficiary(dbId);
-          print("✅ Beneficiary synced: $dbId");
-        } else {
-          print("❌ Server error on beneficiary sync: $dbId");
+          wasSynced = true;
         }
       } catch (e) {
-        print("❌ Error syncing beneficiary: $e");
+        print("❌ Network Error syncing beneficiary: $e");
       }
     }
+
+    if (wasSynced) _syncController.add(true);
   }
 
-  // =============================================================
-  // SYNC: Officer Actions
-  // =============================================================
 
+  // --- New: Sync Officer Actions ---
   static Future<void> syncOfficerActions() async {
-    final rows = await DatabaseHelper.instance.getOfficerActions();
-    if (rows.isEmpty) return;
+    final actions = await DatabaseHelper.instance.getOfficerActions();
+    if (actions.isEmpty) return;
 
-    for (var row in rows) {
-      final dbId = row[DatabaseHelper.colId];
-      final loanId = row[DatabaseHelper.colLoanId];
-      final processId = row[DatabaseHelper.colProcessId];
-      final actionType = row[DatabaseHelper.colActionType];
+    print("👮 Syncing ${actions.length} officer verification actions...");
+
+    for (var row in actions) {
+      final dbId = row[DatabaseHelper.colId] as int;
+      final loanId = row[DatabaseHelper.colLoanId] as String;
+      final processId = row[DatabaseHelper.colProcessId] as String;
+      final actionType = row[DatabaseHelper.colActionType] as String;
 
       try {
-        final resp = await http.post(
+        final response = await http.post(
           Uri.parse('${kBaseUrl}bank/verify'),
-          headers: {"Content-Type": "application/json"},
-          body: '{"loan_id":"$loanId","process_id":"$processId","status":"$actionType"}',
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'loan_id': loanId,
+            'process_id': processId,
+            'status': actionType
+          }),
         );
 
-        if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        if (response.statusCode == 200) {
+          print("✅ Officer Action Synced: Loan $loanId Step $processId -> $actionType");
           await DatabaseHelper.instance.deleteOfficerAction(dbId);
-          print("✔ Officer Action Synced ");
         } else {
-          print("❌ Server error syncing officer action: $dbId");
+          print("❌ Failed to sync action: Server returned ${response.statusCode}");
         }
       } catch (e) {
         print("❌ Error syncing officer action: $e");
@@ -307,15 +232,10 @@ class SyncService {
     }
   }
 
-  // =============================================================
-  // Dispose
-  // =============================================================
-  void dispose() {
-    try {
-      _connectivitySubscription?.cancel();
-      _syncController.close();
-      _onlineStatusController.close();
-      _itemSyncedController.close();
-    } catch (_) {}
+  static void dispose() {
+    _syncController.close();
+    _onlineStatusController.close();
+    _itemSyncedController.close();
+    _connectivitySubscription?.cancel();
   }
 }

@@ -1,9 +1,17 @@
 import 'dart:math';
 import 'dart:ui';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
 import '../services/api.dart';
+import '../services/sync_service.dart';
 import 'loan_detail_page.dart';
 import 'package:loan2/widgets/officer_nav_bar.dart';
 
@@ -13,6 +21,16 @@ class ReportsPage extends StatefulWidget {
 
   @override
   State<ReportsPage> createState() => _ReportsPageState();
+}
+String _canonStatus(String st) {
+  final s = st.trim().toLowerCase();
+
+  if (s == "verified" || s == "accepted" || s == "approved" || s == "approve") return "verified";
+  if (s == "rejected" || s == "declined" || s == "denied" || s == "deny") return "rejected";
+  if (s == "pending" || s == "not verified" || s == "not_verified" || s == "not-verified" || s == "unverified") {
+    return "pending";
+  }
+  return s;
 }
 
 class _LoanRow {
@@ -33,6 +51,26 @@ class _LoanRow {
     required this.dateApplied,
     this.scheme = "",
   });
+
+  Map<String, dynamic> toJson() => {
+    "loan_id": loanId,
+    "applicant_name": applicantName,
+    "amount": amount,
+    "loan_type": loanType,
+    "status": status,
+    "date_applied": dateApplied,
+    "scheme": scheme,
+  };
+
+  static _LoanRow fromJson(Map<String, dynamic> j) => _LoanRow(
+    loanId: (j["loan_id"] ?? "").toString(),
+    applicantName: (j["applicant_name"] ?? "Beneficiary").toString(),
+    amount: (j["amount"] is num) ? (j["amount"] as num).toDouble() : double.tryParse("${j["amount"]}") ?? 0.0,
+    loanType: (j["loan_type"] ?? "Loan").toString(),
+    status: (j["status"] ?? "not verified").toString(),
+    dateApplied: (j["date_applied"] ?? "2000-01-01").toString(),
+    scheme: (j["scheme"] ?? "").toString(),
+  );
 }
 
 enum _RangePick { today, week, month, all, custom }
@@ -40,21 +78,18 @@ enum _RangePick { today, week, month, all, custom }
 class _ReportsPageState extends State<ReportsPage> {
   // ====== THEME PALETTE (auto light/dark) ======
 
-  // Dark palette (your existing look)
   static const _bgDark = Color(0xFF0B1220);
   static const _cardDark = Color(0xFF0F1B2D);
   static const _cardBorderDark = Color(0xFF1E2B44);
   static const _mutedDark = Color(0xFFB8C0D4);
   static const _titleDark = Colors.white;
 
-  // Light palette
   static const _bgLight = Color(0xFFF6F8FB);
   static const _cardLight = Colors.white;
   static const _cardBorderLight = Color(0xFFE5E7EB);
   static const _mutedLight = Color(0xFF6B7280);
   static const _titleLight = Color(0xFF111827);
 
-  // Accent stays same
   static const _accent = Color(0xFF1E5AA8);
   static const double _headerRadius = 25;
 
@@ -66,12 +101,9 @@ class _ReportsPageState extends State<ReportsPage> {
   Color get _muted => _isDarkMode ? _mutedDark : _mutedLight;
   Color get _title => _isDarkMode ? _titleDark : _titleLight;
 
-  Color get _chipBg =>
-      _isDarkMode ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04);
-  Color get _chipBorder =>
-      _isDarkMode ? Colors.white.withOpacity(0.18) : Colors.black.withOpacity(0.08);
-  Color get _chipActiveBg =>
-      _isDarkMode ? Colors.white.withOpacity(0.14) : Colors.black.withOpacity(0.07);
+  Color get _chipBg => _isDarkMode ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04);
+  Color get _chipBorder => _isDarkMode ? Colors.white.withOpacity(0.18) : Colors.black.withOpacity(0.08);
+  Color get _chipActiveBg => _isDarkMode ? Colors.white.withOpacity(0.14) : Colors.black.withOpacity(0.07);
 
   // ====== STATE ======
 
@@ -82,16 +114,102 @@ class _ReportsPageState extends State<ReportsPage> {
   bool _showRejected = true;
   bool _showPending = true;
 
-  _RangePick _rangePick = _RangePick.week;
+  _RangePick _rangePick = _RangePick.all;
+
   DateTimeRange? _customRange;
 
   final List<_LoanRow> _all = [];
   static const List<String> _schemeOptions = ["NBCFDC", "NSFDC", "NSKFDC"];
 
+  String? _cacheUpdatedAt; // optional display/debug
+
   @override
   void initState() {
     super.initState();
-    _loadFromApi();
+    _load(); // ✅ offline-aware now
+  }
+
+  // ====== OFFLINE SNAPSHOT (FILE CACHE) ======
+
+  Future<File> _getCacheFile() async {
+    final docs = await getApplicationDocumentsDirectory();
+    // per officer cache (so officers don’t overwrite each other)
+    return File(p.join(docs.path, 'reports_cache_${widget.officerId}.json'));
+  }
+
+  Future<void> _writeCache() async {
+    try {
+      final f = await _getCacheFile();
+      final payload = {
+        "updated_at": DateTime.now().toIso8601String(),
+        "items": _all.map((e) => e.toJson()).toList(),
+      };
+      await f.writeAsString(jsonEncode(payload));
+      _cacheUpdatedAt = payload["updated_at"]?.toString();
+    } catch (e) {
+      debugPrint("❌ Reports cache write failed: $e");
+    }
+  }
+
+  Future<void> _loadFromCache({bool showSnack = true}) async {
+    try {
+      final f = await _getCacheFile();
+      if (!await f.exists()) {
+        if (mounted) {
+          setState(() {
+            _all.clear();
+            _loading = false;
+          });
+          if (showSnack) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Offline: No cached reports available yet."), backgroundColor: Colors.orange),
+            );
+          }
+        }
+        return;
+      }
+
+      final text = await f.readAsString();
+      final decoded = jsonDecode(text);
+
+      if (decoded is Map<String, dynamic>) {
+        final items = decoded["items"];
+        final ts = decoded["updated_at"]?.toString();
+        final list = <_LoanRow>[];
+
+        if (items is List) {
+          for (final it in items) {
+            if (it is Map) {
+              list.add(_LoanRow.fromJson(Map<String, dynamic>.from(it)));
+            }
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _all
+              ..clear()
+              ..addAll(list);
+            _cacheUpdatedAt = ts;
+            _loading = false;
+          });
+
+          if (showSnack) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Offline: Showing last saved report snapshot${ts != null ? " ($ts)" : ""}."),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Reports cache read failed: $e");
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
   }
 
   // ====== FILTER SHEET ======
@@ -101,7 +219,7 @@ class _ReportsPageState extends State<ReportsPage> {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: _cardFill, // ✅ follows theme now
+      backgroundColor: _cardFill,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
@@ -274,13 +392,16 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   bool _statusAllowed(String st) {
-    final s = st.trim().toLowerCase();
+    final s = _canonStatus(st);
     if (!_showAccepted && !_showRejected && !_showPending) return true;
+
     if (_showAccepted && s == "verified") return true;
     if (_showRejected && s == "rejected") return true;
-    if (_showPending && (s == "not verified" || s == "pending")) return true;
+    if (_showPending && s == "pending") return true;
+
     return false;
   }
+
 
   List<_LoanRow> get _filtered {
     final r = _effectiveRange();
@@ -299,13 +420,14 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   int _countStatus(List<_LoanRow> list, String status) =>
-      list.where((l) => l.status.toLowerCase() == status).length;
+      list.where((l) => _canonStatus(l.status) == status).length;
 
   double _sumAmount(List<_LoanRow> list, String status) {
     return list
-        .where((l) => l.status.toLowerCase() == status)
+        .where((l) => _canonStatus(l.status) == status)
         .fold<double>(0, (p, e) => p + e.amount);
   }
+
 
   String _fmtCompact(num v) {
     if (v >= 10000000) return "${(v / 10000000).toStringAsFixed(1)}Cr";
@@ -315,7 +437,10 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Future<List<_LoanRow>> _fetchList(String status) async {
-    final res = await getJson("bank/loans?officer_id=${widget.officerId}&status=$status");
+    final oid = Uri.encodeComponent(widget.officerId.trim());
+    final st = Uri.encodeComponent(status.trim());
+    final res = await getJson("bank/loans?officer_id=$oid&status=$st");
+
     final List items = (res["data"] ?? []) as List;
 
     return items.map((e) {
@@ -324,8 +449,10 @@ class _ReportsPageState extends State<ReportsPage> {
         applicantName: (e["applicant_name"] ?? "Beneficiary").toString(),
         amount: (e["amount"] is num) ? (e["amount"] as num).toDouble() : 0.0,
         loanType: (e["loan_type"] ?? "Loan").toString(),
-        status: (e["status"] ?? status).toString(),
+        status: status, // force classification based on the list we requested
+
         dateApplied: (e["date_applied"] ?? "2000-01-01").toString(),
+        scheme: (e["scheme"] ?? "").toString(), // ✅ server already sends this
       );
     }).toList();
   }
@@ -339,10 +466,12 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Future<void> _attachSchemesInBatches(List<_LoanRow> loans) async {
+    // ✅ Only fetch details if scheme missing (keeps your old logic, but avoids spam calls)
     const batchSize = 8;
     for (int i = 0; i < loans.length; i += batchSize) {
       final chunk = loans.sublist(i, min(i + batchSize, loans.length));
       await Future.wait(chunk.map((l) async {
+        if (l.scheme.trim().isNotEmpty) return;
         try {
           final d = await getJson("bank/loan/${l.loanId}");
           final s = (d["scheme"] ?? "").toString().trim();
@@ -352,6 +481,19 @@ class _ReportsPageState extends State<ReportsPage> {
       if (!mounted) return;
       setState(() {});
     }
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+
+    // ✅ DO NOT call getJson when offline (your api.dart blocks waiting for internet)
+    final online = await SyncService.realInternetCheck();
+    if (!online) {
+      await _loadFromCache(showSnack: true);
+      return;
+    }
+
+    await _loadFromApi();
   }
 
   Future<void> _loadFromApi() async {
@@ -382,17 +524,21 @@ class _ReportsPageState extends State<ReportsPage> {
       setState(() => _loading = false);
 
       await _attachSchemesInBatches(_all);
-    } catch (_) {
+
+      // ✅ after we have best data, snapshot it for offline viewing
+      await _writeCache();
+    } catch (e) {
+      debugPrint("❌ Reports API load failed: $e");
       if (!mounted) return;
-      setState(() => _loading = false);
+      // fallback to cache if API fails
+      await _loadFromCache(showSnack: true);
     }
   }
 
-  // ===== Custom range picker (unchanged logic) =====
+  // ===== Custom range picker =====
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
-    final initial =
-        _customRange ?? DateTimeRange(start: now.subtract(const Duration(days: 7)), end: now);
+    final initial = _customRange ?? DateTimeRange(start: now.subtract(const Duration(days: 7)), end: now);
 
     final picked = await showDialog<DateTimeRange>(
       context: context,
@@ -414,7 +560,7 @@ class _ReportsPageState extends State<ReportsPage> {
     });
   }
 
-  // ====== UI helpers (now theme-aware) ======
+  // ====== UI helpers ======
 
   Widget _card({required Widget child, EdgeInsets padding = const EdgeInsets.all(16)}) {
     return ClipRRect(
@@ -441,24 +587,17 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  // Blue card (dark keeps gradient; light becomes soft gradient)
   Widget _blueCard({required Widget child, EdgeInsets padding = const EdgeInsets.all(16)}) {
     final grad = _isDarkMode
         ? const LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [
-        Color(0xFF183B7A),
-        Color(0xFF0F2A57),
-      ],
+      colors: [Color(0xFF183B7A), Color(0xFF0F2A57)],
     )
         : const LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [
-        Color(0xFFEAF2FF),
-        Color(0xFFDDEAFF),
-      ],
+      colors: [Color(0xFFEAF2FF), Color(0xFFDDEAFF)],
     );
 
     final border = _isDarkMode ? const Color(0xFF22406D) : const Color(0xFFCFE0FF);
@@ -664,16 +803,16 @@ class _ReportsPageState extends State<ReportsPage> {
     final maxY = max(1, maxVal + 1).toDouble();
 
     final recent = [...list]..sort((a, b) => _parseDate(b.dateApplied).compareTo(_parseDate(a.dateApplied)));
-    final recent8 = recent.take(8).toList();
+    final recent8 = recent.take(50).toList(); // or just: final recent8 = recent;
+// or just: final recent8 = recent;
 
-    final appBarTextColor = Colors.white;
 
     return Scaffold(
-      backgroundColor: _bg, // ✅ follows theme now
+      backgroundColor: _bg,
       appBar: AppBar(
         title: Text(
           "Analytics & Reports",
-          style: GoogleFonts.poppins(color: appBarTextColor, fontWeight: FontWeight.w700),
+          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700),
         ),
         backgroundColor: _accent,
         elevation: 0,
@@ -685,7 +824,7 @@ class _ReportsPageState extends State<ReportsPage> {
         clipBehavior: Clip.antiAlias,
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _loadFromApi,
+        onPressed: _load, // ✅ offline aware refresh
         backgroundColor: _accent,
         foregroundColor: Colors.white,
         elevation: 2,
@@ -740,6 +879,16 @@ class _ReportsPageState extends State<ReportsPage> {
                 ),
               ),
             ),
+
+            // (optional) small hint that cache exists
+            if (_cacheUpdatedAt != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                "Last snapshot: $_cacheUpdatedAt",
+                style: GoogleFonts.inter(fontSize: 11.5, color: _muted, fontWeight: FontWeight.w600),
+              ),
+            ],
+
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.center,
@@ -902,9 +1051,10 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Widget _activityTile(_LoanRow l) {
-    final st = l.status.trim().toLowerCase();
+    final st = _canonStatus(l.status);
     final isVerified = st == "verified";
     final isRejected = st == "rejected";
+
 
     IconData icon;
     String label;
