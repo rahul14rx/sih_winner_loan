@@ -4,7 +4,7 @@ import 'package:loan2/models/beneficiary_loan.dart';
 import 'package:loan2/models/process_step.dart' as ps;
 import 'package:loan2/pages/verification_step_page.dart'; // <-- use step page
 import 'package:loan2/services/beneficiary_service.dart';
-import 'package:loan2/pages/verification_step_page.dart';
+
 class LoanProcessPage extends StatefulWidget {
   final String loanId;
   final String userId;
@@ -391,12 +391,11 @@ class _LoanProcessPageState extends State<LoanProcessPage> {
         builder: (_) => VerificationStepPage(
           loanId: _loan?.loanId ?? widget.loanId,
           userId: (_loan?.userId?.isNotEmpty ?? false) ? _loan!.userId! : widget.userId,
-          step: step, // <-- critical: pass the specific step
+          step: step, // <-- critical: pass the specific step (now supported)
         ),
       ),
     ).then((_) => _load(silent: true));
   }
-
 
   // ---------------------------- UI ----------------------------
 

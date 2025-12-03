@@ -516,35 +516,6 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
     );
   }
 
-  // Future<void> _openWizard() async {
-  //   final loanId = _currentLoan.loanId ?? '';
-  //   final userId = _currentLoan.userId ?? '';
-  //
-  //   if (loanId.isEmpty || userId.isEmpty) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       const SnackBar(content: Text('Missing loanId / userId for this loan')),
-  //     );
-  //     return;
-  //   }
-  //
-  //   final changed = await Navigator.push(
-  //     context,
-  //     MaterialPageRoute(
-  //       builder: (_) => VerificationWizardPage(
-  //         loanId: loanId,
-  //         userId: userId,
-  //       ),
-  //     ),
-  //   );
-  //
-  //   if (changed == true) {
-  //     _refreshLoanData();
-  //   } else {
-  //     _refreshLoanData(silent: true);
-  //   }
-  // }
-
-
   // ---------- UI ----------
 
   PreferredSizeWidget _buildAppBar() {

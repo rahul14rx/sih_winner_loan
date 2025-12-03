@@ -1,4 +1,3 @@
-// lib/services/database_helper.dart
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -7,13 +6,12 @@ import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
   static const _dbName = 'loan_app.db';
-  static const _dbVersion = 8; // Incremented to 7 for new beneficiary fields
-  
+  static const _dbVersion = 9;
+
   static const tableImages = 'images';
   static const tableBeneficiaries = 'pending_beneficiaries';
-  static const tableOfficerActions = 'officer_actions'; // New Table
+  static const tableOfficerActions = 'officer_actions';
   static const colExtraJson = 'extra_json';
-
 
   // columns for images
   static const colId = 'id';
@@ -22,8 +20,11 @@ class DatabaseHelper {
   static const colProcessIntId = 'process_int_id';
   static const colLoanId = 'loan_id';
   static const colFilePath = 'file_path';
-  static const colSubmitted = 'submitted'; // 0 = captured, 1 = queued for upload
+  static const colSubmitted = 'submitted';
   static const colCreatedAt = 'created_at';
+  static const colLatitude = 'latitude';
+  static const colLongitude = 'longitude';
+  static const colLocationConfidence = 'location_confidence';
 
   // columns for beneficiaries
   static const colOfficerId = 'officer_id';
@@ -33,13 +34,12 @@ class DatabaseHelper {
   static const colScheme = 'scheme';
   static const colLoanType = 'loan_type';
   static const colDocPath = 'doc_path';
-  // NEW COLUMNS FOR DB VERSION 7
   static const colAddress = 'address';
   static const colAsset = 'asset';
 
   // columns for officer actions
-  static const colActionType = 'action_type'; // 'verified' or 'rejected'
-  static const colStatus = 'status'; // Same as action type essentially
+  static const colActionType = 'action_type';
+  static const colStatus = 'status';
 
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
@@ -68,28 +68,30 @@ class DatabaseHelper {
         $colLoanId TEXT,
         $colFilePath TEXT,
         $colSubmitted INTEGER DEFAULT 0,
-        $colCreatedAt INTEGER
+        $colCreatedAt INTEGER,
+        $colLatitude TEXT,
+        $colLongitude TEXT,
+        $colLocationConfidence TEXT
       )
     ''');
 
     await db.execute('''
-  CREATE TABLE $tableBeneficiaries (
-    $colId INTEGER PRIMARY KEY AUTOINCREMENT,
-    $colOfficerId TEXT,
-    $colName TEXT,
-    $colPhone TEXT,
-    $colAmount TEXT,
-    $colLoanId TEXT,
-    $colScheme TEXT,
-    $colLoanType TEXT,
-    $colDocPath TEXT,
-    $colCreatedAt INTEGER,
-    $colAddress TEXT,
-    $colAsset TEXT,
-    $colExtraJson TEXT
-  )
-''');
-
+      CREATE TABLE $tableBeneficiaries (
+        $colId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $colOfficerId TEXT,
+        $colName TEXT,
+        $colPhone TEXT,
+        $colAmount TEXT,
+        $colLoanId TEXT,
+        $colScheme TEXT,
+        $colLoanType TEXT,
+        $colDocPath TEXT,
+        $colCreatedAt INTEGER,
+        $colAddress TEXT,
+        $colAsset TEXT,
+        $colExtraJson TEXT
+      )
+    ''');
 
     await db.execute('''
       CREATE TABLE $tableOfficerActions (
@@ -104,13 +106,13 @@ class DatabaseHelper {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colSubmitted INTEGER DEFAULT 0;');
+      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colSubmitted INTEGER DEFAULT 0');
     }
     if (oldVersion < 3) {
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLoanId TEXT;');
+      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLoanId TEXT');
     }
     if (oldVersion < 4) {
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colProcessIntId INTEGER;');
+      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colProcessIntId INTEGER');
     }
     if (oldVersion < 5) {
       await db.execute('''
@@ -139,18 +141,19 @@ class DatabaseHelper {
         )
       ''');
     }
-    // UPGRADE FOR VERSION 7
     if (oldVersion < 7) {
-        await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAddress TEXT;');
-        await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAsset TEXT;');
+        await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAddress TEXT');
+        await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAsset TEXT');
     }
     if (oldVersion < 8) {
-      await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colExtraJson TEXT;');
+      await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colExtraJson TEXT');
     }
-
+    if (oldVersion < 9) {
+      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLatitude TEXT');
+      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLongitude TEXT');
+      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLocationConfidence TEXT');
+    }
   }
-
-  // --- Image Methods ---
 
   Future<int> insertImagePath({
     required String userId,
@@ -158,6 +161,9 @@ class DatabaseHelper {
     required int processIntId,
     required String loanId,
     required String filePath,
+    String? latitude,
+    String? longitude,
+    String? locationConfidence,
   }) async {
     final db = await database;
     final row = {
@@ -168,6 +174,9 @@ class DatabaseHelper {
       colFilePath: filePath,
       colSubmitted: 0,
       colCreatedAt: DateTime.now().millisecondsSinceEpoch,
+      colLatitude: latitude,
+      colLongitude: longitude,
+      colLocationConfidence: locationConfidence,
     };
     return await db.insert(tableImages, row);
   }
@@ -243,8 +252,6 @@ class DatabaseHelper {
     return result; 
   }
 
-  // --- Beneficiary Methods (Offline Support) ---
-
   Future<int> insertPendingBeneficiary({
     required String officerId,
     required String name,
@@ -254,9 +261,8 @@ class DatabaseHelper {
     required String scheme,
     required String loanType,
     String? docPath,
-    String? address, // MADE OPTIONAL
+    String? address,
     String? asset,  String? extraJson,
-    // MADE OPTIONAL
   }) async {
     final db = await database;
     final row = {
@@ -268,8 +274,8 @@ class DatabaseHelper {
       colScheme: scheme,
       colLoanType: loanType,
       colDocPath: docPath,
-      colAddress: address, // NEW
-      colAsset: asset,     // CNEW
+      colAddress: address,
+      colAsset: asset,
       colCreatedAt: DateTime.now().millisecondsSinceEpoch,colExtraJson: extraJson,
 
     };
@@ -287,8 +293,6 @@ class DatabaseHelper {
     debugPrint("✅ Local DB record deleted from table '$tableBeneficiaries' with id: $id");
     return result;
   }
-
-  // --- Officer Action Methods (New) ---
 
   Future<int> insertOfficerAction({
     required String loanId,

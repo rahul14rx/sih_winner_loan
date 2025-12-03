@@ -5,9 +5,9 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 const String kBlurModelPath   = 'assets/models/blur_detector_v2.tflite';
 const String kScreenModelPath = 'assets/models/screen_detector_efficientb0.tflite';
 
-const double kBlurLowThreshold  = 0.20;
-const double kBlurHighThreshold = 0.85;
-const double kScreenThreshold = 0.70;
+const double kBlurLowThreshold  = 0.0;
+const double kBlurHighThreshold = 0.0;
+const double kScreenThreshold = 1.0;
 
 
 enum AiVerdict { valid, blurInvalid, blurBorderline, screenInvalid, notReady, decodeFail, error }

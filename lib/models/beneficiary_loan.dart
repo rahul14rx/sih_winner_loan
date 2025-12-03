@@ -16,6 +16,7 @@ class BeneficiaryLoan {
   final String? status;
   final dynamic amount;      // keep dynamic because API can be num or String
   final String? dateApplied;
+  final dynamic totalUtilized; // Can be num or String from API
 
   final List<ProcessStep> processes;
 
@@ -28,6 +29,7 @@ class BeneficiaryLoan {
     this.status,
     this.amount,
     this.dateApplied,
+    this.totalUtilized,
     required this.processes,
   });
 
@@ -87,6 +89,7 @@ class BeneficiaryLoan {
       status: _firstOf(j, ['status', 'loan_status'])?.toString(),
       amount: j.containsKey('amount') ? j['amount'] : (j['sanctioned_amount'] ?? j['sanctionedAmount']),
       dateApplied: _firstOf(j, ['date_applied', 'applied_on', 'created_at', 'createdAt'])?.toString(),
+      totalUtilized: _firstOf(j, ['total_utilized', 'totalUtilized', 'total_utilised']),
       processes: processes,
     );
   }
@@ -101,6 +104,7 @@ class BeneficiaryLoan {
       'status': status,
       'amount': amount,
       'date_applied': dateApplied,
+      'total_utilized': totalUtilized,
       'processes': processes.map((e) => e.toJson()).toList(),
     };
   }
