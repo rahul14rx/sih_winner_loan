@@ -38,8 +38,12 @@ def login_user(login_id, password, role):
     if role == "user":
         user = collection.find_one({"user_id": str(login_id)})
         if user:
-            return {"status": "success", "user_id": str(login_id), "role": "user",
-                    "name": user.get("applicant_name", "Beneficiary")}
+            return {
+                "status": "success",
+                "user_id": str(login_id),
+                "role": "user",
+                "name": user.get("applicant_name", "Beneficiary"),
+            }
     return None
 
 
@@ -59,8 +63,8 @@ def get_officer_stats(officer_id):
             "total": {"$sum": 1},
             "verified": {"$sum": {"$cond": [{"$eq": ["$status", "verified"]}, 1, 0]}},
             "pending": {"$sum": {"$cond": [{"$eq": ["$status", "not verified"]}, 1, 0]}},
-            "rejected": {"$sum": {"$cond": [{"$eq": ["$status", "rejected"]}, 1, 0]}}
-        }}
+            "rejected": {"$sum": {"$cond": [{"$eq": ["$status", "rejected"]}, 1, 0]}},
+        }},
     ]
     result = list(collection.aggregate(pipeline))
     if result:
@@ -130,7 +134,7 @@ def upsert_history_from_loan(loan_id):
     history_collection.update_one(
         {"loan_id": str(loan_id)},
         {"$set": h, "$setOnInsert": {"created_at": now}},
-        upsert=True
+        upsert=True,
     )
     return True
 
@@ -168,18 +172,18 @@ def update_process_status(loan_id, process_id, status, officer_comment=""):
 
     upd = {"$set": {
         "process.$.process_status": status,
-        "process.$.officer_comment": officer_comment
+        "process.$.officer_comment": officer_comment,
     }}
 
     r = collection.update_one(
         {"loan_id": str(loan_id), "process.id": str(process_id)},
-        upd
+        upd,
     )
 
     if r.matched_count == 0 and str(process_id).isdigit():
         r = collection.update_one(
             {"loan_id": str(loan_id), "process.processid": int(process_id)},
-            upd
+            upd,
         )
 
     if r.matched_count == 0:
@@ -187,8 +191,17 @@ def update_process_status(loan_id, process_id, status, officer_comment=""):
 
     doc = collection.find_one({"loan_id": str(loan_id)}, {"process": 1})
     if doc and "process" in doc:
-        all_verified = all(p.get("process_status") == "verified" for p in doc["process"])
-        any_rejected = any(p.get("process_status") == "rejected" for p in doc["process"])
+        # Flatten any nested process lists
+        raw_procs = doc.get("process", [])
+        procs = []
+        for p in raw_procs:
+            if isinstance(p, list):
+                procs.extend([x for x in p if isinstance(x, dict)])
+            elif isinstance(p, dict):
+                procs.append(p)
+
+        all_verified = bool(procs) and all(p.get("process_status") == "verified" for p in procs)
+        any_rejected = any(p.get("process_status") == "rejected" for p in procs)
 
         new_status = "not verified"
         if all_verified:
@@ -212,55 +225,141 @@ def _is_construction(loan_type, scheme):
 
 def _build_default_processes(data):
     lt = (data.get("loan_type") or "").strip()
-    sc = (data.get("scheme") or "").strip()
+    item_type = lt.split("-")[-1]
+    item_type = item_type.lower().strip()
+    print(item_type, "item_type")
 
-    if not _is_construction(lt, sc):
+    if item_type in ["laptop", "sewing machine"]:
+        print(1)
         return [
             {"id": "P1", "processid": 1, "what_to_do": "Upload Asset Front View", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True, "latitude": None, "longitude": None, "location_confidence": None},
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
             {"id": "P2", "processid": 2, "what_to_do": "Upload Asset Side View", "data": None,
-             "data_type": "movement", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True, "latitude": None, "longitude": None, "location_confidence": None},
+             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
             {"id": "P3", "processid": 3, "what_to_do": "Upload Invoice Bill", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True, "latitude": None, "longitude": None, "location_confidence": None},
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
             {"id": "P4", "processid": 4, "what_to_do": "Record 360 Video", "data": None,
-             "data_type": "video", "score": 0, "process_status": "not verified", "file_id": None, "is_required": True, "latitude": None, "longitude": None, "location_confidence": None},
+             "data_type": "video", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
         ]
 
-    stages = data.get("stages") or data.get("shop_floors") or data.get("floors") or "4"
-    try:
-        stages = int(str(stages))
-    except Exception:
-        stages = 4
-    if stages <= 0:
-        stages = 4
+    elif item_type in ["tractor", "auto rickshaws"]:
+        print(2)
+        return [
+            {"id": "P1", "processid": 1, "what_to_do": "Upload Asset Front View", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P2", "processid": 2, "what_to_do": "Upload Asset Side View", "data": None,
+             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P3", "processid": 3, "what_to_do": "Upload Number Plate", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P4", "processid": 4, "what_to_do": "Upload Invoice Bill", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P5", "processid": 5, "what_to_do": "Record 360 Video", "data": None,
+             "data_type": "video", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+        ]
 
-    template = [
-        ("Front elevation view photo", "image"),
-        ("Inner construction view photo", "image"),
-        ("Invoice / Bill photo", "image"),
-        ("360 degree video", "video"),
-    ]
+    elif item_type in ["ppe kit"]:
+        print(3)
+        return [
+            {"id": "P1", "processid": 1, "what_to_do": "Top ordered View", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P2", "processid": 2, "what_to_do": "Upload Invoice Bill", "data": None,
+             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+        ]
 
-    out = []
-    pid = 1
-    for s in range(1, stages + 1):
-        for title, dt in template:
-            out.append({
-                "id": f"P{pid}",
-                "processid": pid,
-                "what_to_do": f"Stage {s}: {title}",
-                "data": None,
-                "data_type": dt,
-                "score": 0,
-                "process_status": "not verified",
-                "file_id": None,
-                "is_required": True,
-                "latitude": None, 
-                "longitude": None, 
-                "location_confidence": None,
-            })
-            pid += 1
-    return out
+    elif item_type in ["cows"]:
+        print(4)
+        return [
+            {"id": "P1", "processid": 1, "what_to_do": "Upload Ear Tag Close up View", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P2", "processid": 2, "what_to_do": "Upload Front View", "data": None,
+             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P3", "processid": 3, "what_to_do": "Upload Invoice Bill", "data": None,
+             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+        ]
+
+    elif item_type in ["course"]:
+        print(5)
+        return [
+            {"id": "P1", "processid": 1, "what_to_do": "Upload Course Certificate", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P2", "processid": 2, "what_to_do": "Upload Invoice Bill", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+        ]
+
+    elif item_type in ["education loan"]:
+        print(6)
+        base = [
+            {"id": "P1", "processid": 1, "what_to_do": "Upload Marksheet", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P2", "processid": 2, "what_to_do": "Upload Fee Receipt", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+        ]
+        total_course_year = int(data.get("total_course_year", 0) or 0)
+        if total_course_year <= 0:
+            return base
+        return base * total_course_year
+
+    elif item_type in ["shop construction / purchase"]:
+        base = [
+            {"id": "P1", "processid": 1, "what_to_do": "Upload Front Elevation View", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P2", "processid": 2, "what_to_do": "Upload Inner Construction View", "data": None,
+             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P3", "processid": 3, "what_to_do": "Upload Invoice Bill", "data": None,
+             "data_type": "image", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+            {"id": "P4", "processid": 4, "what_to_do": "Record 360 Video", "data": None,
+             "data_type": "video", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
+        ]
+        total_floors = int(data.get("floors", 0) or 0)
+        if total_floors <= 0:
+            return base
+        return base * total_floors
+
+    return []
 
 
 def create_beneficiary(data, loan_agreement=None):
@@ -291,25 +390,36 @@ def create_beneficiary(data, loan_agreement=None):
         "loan_category": data.get("loan_category"),
         "loan_purpose": data.get("loan_purpose"),
         "loan_agreement_file_id": loan_agreement_file_id,
-        "beneficiary_address": data.get("beneficiary_address"),
-        "asset_purchased": data.get("asset_purchased"),
+        "beneficiary_address": data.get("beneficiary_address", None),
+        "asset_purchased": data.get("asset_purchased", None),
+        "institution_name": data.get("institution_name", None),
+        "brand_and_model": data.get("brand_and_model", None),
+        "no_of_cows": data.get("no of cows", None),
+        "course_name": data.get("course_name", None),
+        "course_provider_name": data.get("course_provider_name", None),
+        "course_mode": data.get("course_mode", None),
+        "total_course_year": data.get("total_course_year", 0),
         "latitude": None,
         "longitude": None,
+        "total_floors": data.get("floors", 0),
+        "is_required": True,
     }
 
     if collection.find_one({"loan_id": new_doc["loan_id"]}):
         return False, "Loan ID already exists"
 
     collection.insert_one(new_doc)
+    print(new_doc)
     return True, "Beneficiary created successfully"
-
 def mock_send_sms(phone, name, loan_id):
     print(f"To: {phone}")
     print(f"Message: Dear {name}, your loan application ({loan_id}) has been registered.")
     return True
 
 
-def update_process_media(user_id, loan_id, process_id, file_storage, utilization_amount=None, latitude=None, longitude=None, location_confidence=None):
+def update_process_media(user_id, loan_id, process_id, file_storage,
+                         utilization_amount=None, latitude=None, longitude=None,
+                         location_confidence=None):
     try:
         file_bytes = file_storage.read()
         gid = fs.put(file_bytes, filename=file_storage.filename)
@@ -345,12 +455,12 @@ def update_process_media(user_id, loan_id, process_id, file_storage, utilization
 
         q1 = {"loan_id": str(loan_id), "user_id": str(user_id), "process.id": str(process_id)}
         u = {"$set": set_payload}
-        
+
         result = collection.update_one(q1, u)
 
         if result.matched_count == 0 and str(process_id).isdigit():
-             q2 = {"loan_id": str(loan_id), "user_id": str(user_id), "process.processid": int(process_id)}
-             result = collection.update_one(q2, u)
+            q2 = {"loan_id": str(loan_id), "user_id": str(user_id), "process.processid": int(process_id)}
+            result = collection.update_one(q2, u)
 
         return result.matched_count > 0
 

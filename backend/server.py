@@ -3,6 +3,8 @@ from flask_cors import CORS
 import io, os
 from bson.objectid import ObjectId
 import db_service
+# import AI_Engine as AI_Engine
+from threading import Thread
 
 DEBUG = True
 app = Flask(__name__)
@@ -20,6 +22,10 @@ def _get_officer_id():
 
 
 def _process_to_api(p):
+    # Defensive: ensure p is a dict
+    if not isinstance(p, dict):
+        return {}
+
     pid = p.get("id") or ""
     process_id = p.get("processid") if p.get("processid") is not None else p.get("process_id")
     try:
@@ -77,8 +83,17 @@ def _loan_to_api(doc):
         "process": [],
     }
 
-    for p in (doc.get("process") or []):
-        out["process"].append(_process_to_api(p))
+    # Flatten process list, in case some entries are nested lists from old data
+    processes = doc.get("process") or []
+
+    for p in processes:
+        if isinstance(p, list):
+            # Nested list -> flatten it
+            for sub in p:
+                if isinstance(sub, dict):
+                    out["process"].append(_process_to_api(sub))
+        elif isinstance(p, dict):
+            out["process"].append(_process_to_api(p))
 
     return out
 
@@ -91,6 +106,7 @@ def health():
 
 @app.route("/login", methods=["POST"])
 def login():
+    print(1)
     data = request.get_json(silent=True) or request.form.to_dict()
     login_id = data.get("login_id") or data.get("mobile") or ""
     password = data.get("password") or ""
@@ -142,10 +158,9 @@ def loan_page():
     return jsonify({"loan_details": _loan_to_api(doc)}), 200
 
 
-@app.route("/upload", methods=["POST"])
+@app.route("/upload", methods=["POST", "GET"])
 def upload_file():
     try:
-        # Explicitly get all data from the form
         process_id = request.form.get("process_id")
         loan_id = request.form.get("loan_id")
         file = request.files.get("file")
@@ -162,8 +177,7 @@ def upload_file():
             return jsonify({"error": "Loan not found"}), 404
 
         user_id = doc.get("user_id")
-        
-        # Pass them as explicit arguments to the service
+
         ok = db_service.update_process_media(
             user_id=user_id,
             loan_id=loan_id,
@@ -176,7 +190,9 @@ def upload_file():
         )
 
         if ok:
+            # Thread(target=AI_Engine.main, args=(loan_id, user_id, process_id)).start()
             return jsonify({"success": True}), 200
+
         return jsonify({"error": "Update failed"}), 400
 
     except Exception as e:
@@ -256,13 +272,12 @@ def create_new():
         return jsonify({"error": "Missing 'loan_agreement' file"}), 400
 
     ok, msg = db_service.create_beneficiary(data, loan_agreement=loan_agreement_file)
-    
+
     if ok:
         db_service.mock_send_sms(data["phone"], data["name"], data["loan_id"])
         return jsonify({"message": msg}), 201
 
     return jsonify({"error": msg}), 400
-
 
 
 @app.route("/media/<file_id>")
@@ -285,4 +300,4 @@ def home():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=DEBUG)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=DEBUG)
