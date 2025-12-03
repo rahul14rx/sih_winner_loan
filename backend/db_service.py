@@ -232,19 +232,19 @@ def _build_default_processes(data):
     if item_type in ["laptop", "sewing machine"]:
         print(1)
         return [
-            {"id": "P1", "processid": 1, "what_to_do": "Upload Asset Front View", "data": None,
+            {"id": "P1", "processid": [1], "what_to_do": "Upload Asset Front View", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P2", "processid": 2, "what_to_do": "Upload Asset Side View", "data": None,
+            {"id": "P2", "processid": [2], "what_to_do": "Upload Asset Side View", "data": None,
              "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P3", "processid": 3, "what_to_do": "Upload Invoice Bill", "data": None,
+            {"id": "P3", "processid": [3], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P4", "processid": 4, "what_to_do": "Record 360 Video", "data": None,
+            {"id": "P4", "processid": [4], "what_to_do": "Record 360 Video", "data": None,
              "data_type": "video", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
@@ -253,23 +253,23 @@ def _build_default_processes(data):
     elif item_type in ["tractor", "auto rickshaws"]:
         print(2)
         return [
-            {"id": "P1", "processid": 1, "what_to_do": "Upload Asset Front View", "data": None,
+            {"id": "P1", "processid": [1], "what_to_do": "Upload Asset Front View", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P2", "processid": 2, "what_to_do": "Upload Asset Side View", "data": None,
+            {"id": "P2", "processid": [2], "what_to_do": "Upload Asset Side View", "data": None,
              "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P3", "processid": 3, "what_to_do": "Upload Number Plate", "data": None,
+            {"id": "P3", "processid": [3], "what_to_do": "Upload Number Plate", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P4", "processid": 4, "what_to_do": "Upload Invoice Bill", "data": None,
+            {"id": "P4", "processid": [4], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P5", "processid": 5, "what_to_do": "Record 360 Video", "data": None,
+            {"id": "P5", "processid": [5], "what_to_do": "Record 360 Video", "data": None,
              "data_type": "video", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
@@ -278,11 +278,11 @@ def _build_default_processes(data):
     elif item_type in ["ppe kit"]:
         print(3)
         return [
-            {"id": "P1", "processid": 1, "what_to_do": "Top ordered View", "data": None,
+            {"id": "P1", "processid": [1], "what_to_do": "Top ordered View", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P2", "processid": 2, "what_to_do": "Upload Invoice Bill", "data": None,
+            {"id": "P2", "processid": [2], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
@@ -291,15 +291,15 @@ def _build_default_processes(data):
     elif item_type in ["cows"]:
         print(4)
         return [
-            {"id": "P1", "processid": 1, "what_to_do": "Upload Ear Tag Close up View", "data": None,
+            {"id": "P1", "processid": [1], "what_to_do": "Upload Ear Tag Close up View", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P2", "processid": 2, "what_to_do": "Upload Front View", "data": None,
+            {"id": "P2", "processid": [2], "what_to_do": "Upload Front View", "data": None,
              "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P3", "processid": 3, "what_to_do": "Upload Invoice Bill", "data": None,
+            {"id": "P3", "processid": [3], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
@@ -308,11 +308,11 @@ def _build_default_processes(data):
     elif item_type in ["course"]:
         print(5)
         return [
-            {"id": "P1", "processid": 1, "what_to_do": "Upload Course Certificate", "data": None,
+            {"id": "P1", "processid": [1], "what_to_do": "Upload Course Certificate", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P2", "processid": 2, "what_to_do": "Upload Invoice Bill", "data": None,
+            {"id": "P2", "processid": [2], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
@@ -321,11 +321,11 @@ def _build_default_processes(data):
     elif item_type in ["education loan"]:
         print(6)
         base = [
-            {"id": "P1", "processid": 1, "what_to_do": "Upload Marksheet", "data": None,
+            {"id": "P1", "processid": [1], "what_to_do": "Upload Marksheet", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P2", "processid": 2, "what_to_do": "Upload Fee Receipt", "data": None,
+            {"id": "P2", "processid": [2], "what_to_do": "Upload Fee Receipt", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
@@ -337,19 +337,19 @@ def _build_default_processes(data):
 
     elif item_type in ["shop construction / purchase"]:
         base = [
-            {"id": "P1", "processid": 1, "what_to_do": "Upload Front Elevation View", "data": None,
+            {"id": "P1", "processid": [1], "what_to_do": "Upload Front Elevation View", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P2", "processid": 2, "what_to_do": "Upload Inner Construction View", "data": None,
+            {"id": "P2", "processid": [2], "what_to_do": "Upload Inner Construction View", "data": None,
              "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P3", "processid": 3, "what_to_do": "Upload Invoice Bill", "data": None,
+            {"id": "P3", "processid": [3], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P4", "processid": 4, "what_to_do": "Record 360 Video", "data": None,
+            {"id": "P4", "processid": [4], "what_to_do": "Record 360 Video", "data": None,
              "data_type": "video", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
@@ -393,7 +393,7 @@ def create_beneficiary(data, loan_agreement=None):
         "beneficiary_address": data.get("beneficiary_address", None),
         "asset_purchased": data.get("asset_purchased", None),
         "institution_name": data.get("institution_name", None),
-        "brand_and_model": data.get("brand_and_model", None),
+        "brand_and_model": data.get("brand_model", None),
         "no_of_cows": data.get("no of cows", None),
         "course_name": data.get("course_name", None),
         "course_provider_name": data.get("course_provider_name", None),
