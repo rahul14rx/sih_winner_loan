@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/pages/bank_dashboard_page.dart';
 import 'package:loan2/pages/beneficiary_dashboard.dart';
-import 'package:loan2/services/api.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -66,7 +65,7 @@ class _LoginPageState extends State<LoginPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _LoginBottomSheet(
+      builder: (sheetCtx) => _LoginBottomSheet(
         title: getStr('official_login_title'),
         subtitle: getStr('official_login_desc'),
         children: [
@@ -83,30 +82,14 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 40),
           _PrimaryButton(
             text: getStr('secure_login_btn'),
-            onPressed: () async {
-              final officerId = officerIdController.text;
-              final password = passwordController.text;
-
-              if (officerId.isNotEmpty && password.isNotEmpty) {
-                final result = await login_user(officerId, password);
-                if (result.isNotEmpty && context.mounted) {
-                  Navigator.pop(context); // closes the bottom sheet
-
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => BankDashboardPage(officerId: officerId)),
-                        (_) => false, // removes LoginPage from stack
-                  );
-                }
-                else if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Login Failed. Check credentials.")),
-                  );
-                }
-              } else if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Fields cannot be empty.")),
-                );
-              }
+            onPressed: () {
+              // Skip auth: close bottom sheet then navigate using root navigator
+              Navigator.pop(sheetCtx);
+              Navigator.of(context, rootNavigator: true).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => BankDashboardPage(officerId: 'OFF001'), // dummy / test id
+                ),
+              );
             },
           ),
         ],
@@ -131,8 +114,8 @@ class _LoginPageState extends State<LoginPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setSheetState) {
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (BuildContext ctx, StateSetter setSheetState) {
           return _LoginBottomSheet(
             title: isOtpSent ? getStr('enter_otp') : getStr('beneficiary_login'),
             subtitle: isOtpSent
@@ -156,11 +139,11 @@ class _LoginPageState extends State<LoginPage> {
                   onPressed: () {
                     if (phoneController.text.length == 10) {
                       setSheetState(() => isOtpSent = true);
-                      Future.delayed(const Duration(milliseconds: 300), () {
+                      Future.delayed(const Duration(milliseconds: 200), () {
                         if (focus1.canRequestFocus) focus1.requestFocus();
                       });
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ScaffoldMessenger.of(ctx).showSnackBar(
                         const SnackBar(content: Text("Enter a valid 10-digit number")),
                       );
                     }
@@ -170,7 +153,7 @@ class _LoginPageState extends State<LoginPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _OtpBox(controller: otp1, focusNode: focus1, nextFocus: focus2),
+                    _OtpBox(controller: otp1, focusNode: focus1, nextFocus: focus2, autofocus: true),
                     _OtpBox(controller: otp2, focusNode: focus2, nextFocus: focus3),
                     _OtpBox(controller: otp3, focusNode: focus3, nextFocus: null),
                   ],
@@ -182,15 +165,15 @@ class _LoginPageState extends State<LoginPage> {
                   onPressed: () {
                     final otp = otp1.text + otp2.text + otp3.text;
                     if (otp == '200') {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
+                      // Skip auth: close bottom sheet then navigate using root navigator
+                      Navigator.pop(sheetCtx);
+                      Navigator.of(context, rootNavigator: true).pushReplacement(
                         MaterialPageRoute(
                           builder: (_) => BeneficiaryDashboard(userId: phoneController.text),
                         ),
                       );
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ScaffoldMessenger.of(ctx).showSnackBar(
                         const SnackBar(content: Text("Invalid OTP (Try 200)")),
                       );
                     }
@@ -306,26 +289,27 @@ class _LoginPageState extends State<LoginPage> {
                   children: <Widget>[
                     Hero(
                       tag: 'emblem',
-                      child: Container(
+                      child: SizedBox(
                         width: 150,
                         height: 120,
                         child: Image.network(
                           'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/1800px-Emblem_of_India.svg.png',
                           height: 100,
-                          errorBuilder: (_,__,___) => const Icon(Icons.account_balance, size: 50, color: Colors.grey),
+                          errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.account_balance, size: 50, color: Colors.grey),
                         ),
                       ),
                     ),
                     const SizedBox(height: 20),
-
-
                     Text(
                       getStr('app_title'),
-                      style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF000080), letterSpacing: 0.5),
+                      style: GoogleFonts.poppins(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF000080),
+                        letterSpacing: 0.5,
+                      ),
                     ),
-
-                    //const SizedBox(height: 20),
-
                     const SizedBox(height: 8),
                     Text(
                       getStr('ministry'),
@@ -387,7 +371,11 @@ class _LoginBottomSheet extends StatelessWidget {
   final String subtitle;
   final List<Widget> children;
 
-  const _LoginBottomSheet({required this.title, required this.subtitle, required this.children});
+  const _LoginBottomSheet({
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +405,14 @@ class _LoginBottomSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 32),
-          Text(title, style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: const Color(0xFF1A1A1A))),
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF1A1A1A),
+            ),
+          ),
           const SizedBox(height: 8),
           Text(subtitle, style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[600])),
           const SizedBox(height: 32),
@@ -432,8 +427,14 @@ class _OtpBox extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final FocusNode? nextFocus;
+  final bool autofocus;
 
-  const _OtpBox({required this.controller, required this.focusNode, this.nextFocus});
+  const _OtpBox({
+    required this.controller,
+    required this.focusNode,
+    this.nextFocus,
+    this.autofocus = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -443,17 +444,26 @@ class _OtpBox extends StatelessWidget {
       child: TextField(
         controller: controller,
         focusNode: focusNode,
-        autofocus: true,
+        autofocus: autofocus,
         textAlign: TextAlign.center,
         keyboardType: TextInputType.number,
         style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.w600),
-        inputFormatters: [LengthLimitingTextInputFormatter(1), FilteringTextInputFormatter.digitsOnly],
+        inputFormatters: [
+          LengthLimitingTextInputFormatter(1),
+          FilteringTextInputFormatter.digitsOnly,
+        ],
         decoration: InputDecoration(
           filled: true,
           fillColor: Colors.grey[50],
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF138808))),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF138808), width: 2)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF138808)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF138808), width: 2),
+          ),
         ),
         onChanged: (value) {
           if (value.length == 1 && nextFocus != null) {
@@ -494,8 +504,16 @@ class _LoginOptionCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.9),
             borderRadius: BorderRadius.circular(16),
-            border: isPrimary ? Border.all(color: color.withOpacity(0.3), width: 1.5) : Border.all(color: Colors.white),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))],
+            border: isPrimary
+                ? Border.all(color: color.withOpacity(0.3), width: 1.5)
+                : Border.all(color: Colors.white),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              )
+            ],
           ),
           child: Row(
             children: [
@@ -509,7 +527,14 @@ class _LoginOptionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF1A1A1A))),
+                    Text(
+                      title,
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A1A1A),
+                      ),
+                    ),
                     Text(subtitle, style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600])),
                   ],
                 ),
@@ -528,7 +553,11 @@ class _PrimaryButton extends StatelessWidget {
   final VoidCallback onPressed;
   final Color color;
 
-  const _PrimaryButton({required this.text, required this.onPressed, this.color = const Color(0xFF000080)});
+  const _PrimaryButton({
+    required this.text,
+    required this.onPressed,
+    this.color = const Color(0xFF000080),
+  });
 
   @override
   Widget build(BuildContext context) {

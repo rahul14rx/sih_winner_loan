@@ -51,7 +51,7 @@ class SyncService {
 
   static Future<bool> realInternetCheck() async {
     try {
-      final response = await http.head(Uri.parse(kBaseUrl)).timeout(const Duration(seconds: 3));
+      final response = await http.get(Uri.parse(kBaseUrl)).timeout(const Duration(seconds: 3));
       return response.statusCode >= 200 && response.statusCode < 500;
     } catch (e) {
       return false;

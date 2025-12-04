@@ -119,6 +119,39 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
 
   // ---------- UI ----------
 
+  Widget _searchBar() {
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          )
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search, color: Color(0xFF6B7C9A)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _search,
+              decoration: const InputDecoration(
+                hintText: "Search by Loan ID, Type or Name",
+                border: InputBorder.none,
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -128,76 +161,55 @@ class _PendingVerificationPageState extends State<PendingVerificationPage> {
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF6F9FC),
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _goHome,
-          ),
-          title: Text(
-            "Pending Verification",
-            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-          ),
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: const Color(0xFF1F6FEB),
-          foregroundColor: Colors.white,
-        ),
-        body: Column(
-          children: [
-            // search
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-              child: Container(
-                height: 52,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    )
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.search, color: Color(0xFF6B7C9A)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: _search,
-                        decoration: const InputDecoration(
-                          hintText: "Search by Loan ID, Type or Name",
-                          border: InputBorder.none,
-                        ),
-                      ),
-                    )
-                  ],
-                ),
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight + 76),
+          child: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _goHome,
+            ),
+            title: Text(
+              "Pending Verification",
+              style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+            ),
+            centerTitle: true,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
+            backgroundColor: const Color(0xFF1F6FEB),
+            foregroundColor: Colors.white,
+
+            // ✅ round ONLY the bottom of the header
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(
+                bottom: Radius.circular(25),
               ),
             ),
 
-            // list
-            Expanded(
-              child: _filtered.isEmpty
-                  ? const Center(
-                child: Text(
-                  "No loans found.",
-                  style: TextStyle(fontSize: 16),
-                ),
-              )
-                  : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
-                itemCount: _filtered.length,
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: _loanCard(_filtered[i]),
-                ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(76),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: _searchBar(),
               ),
             ),
-          ],
+          ),
+        ),
+
+        body: _filtered.isEmpty
+            ? const Center(
+          child: Text(
+            "No loans found.",
+            style: TextStyle(fontSize: 16),
+          ),
+        )
+            : ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+          itemCount: _filtered.length,
+          itemBuilder: (_, i) => Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _loanCard(_filtered[i]),
+          ),
         ),
       ),
     );

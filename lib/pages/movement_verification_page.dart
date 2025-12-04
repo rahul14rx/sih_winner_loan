@@ -195,7 +195,7 @@ class _MovementScreenState extends State<MovementVerificationPage> {
 
   Future<void> _initializeCamera() async {
     var status = await Permission.camera.request();
-    
+
     // CRITICAL FIX: Initialize cameras if they haven't been initialized (e.g. coming from another screen)
     if (_cameras.isEmpty) {
       try {

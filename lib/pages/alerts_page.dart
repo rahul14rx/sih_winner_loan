@@ -8,6 +8,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:loan2/pages/beneficiary_dashboard.dart';
+
 
 class AlertsPage extends StatefulWidget {
   final String userId;
@@ -20,6 +22,15 @@ class AlertsPage extends StatefulWidget {
 class _AlertsPageState extends State<AlertsPage> {
   bool _loading = true;
   List<Map<String, dynamic>> _alerts = [];
+
+  void _goHome() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => BeneficiaryDashboard(userId: widget.userId),
+      ),
+          (route) => false,
+    );
+  }
 
   @override
   void initState() {
@@ -35,7 +46,7 @@ class _AlertsPageState extends State<AlertsPage> {
     try {
       setState(() => _loading = true);
 
-      final url = Uri.parse("http://192.168.0.116:5001/user?id=${widget.userId}");
+      final url = Uri.parse("http://10.156.77.23:5001/user?id=${widget.userId}");
       final res = await http.get(url);
 
       if (res.statusCode != 200) {
@@ -226,11 +237,13 @@ class _AlertsPageState extends State<AlertsPage> {
                         fontSize: 15, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
                 Text(a["message"],
-                    style: GoogleFonts.inter(fontSize: 13, color: Colors.black87)),
+                    style: GoogleFonts.inter(
+                        fontSize: 13, color: Colors.black87)),
                 const SizedBox(height: 10),
                 Text(
                   DateFormat("dd MMM yyyy • hh:mm a").format(a["time"]),
-                  style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+                  style: GoogleFonts.inter(
+                      fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -251,29 +264,63 @@ class _AlertsPageState extends State<AlertsPage> {
   // MAIN BUILD
   // -----------------------------------------
   @override
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F9FC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0.3,
-        title: Text("Alerts",
-            style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadAlerts,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _alerts.isEmpty
-            ? Center(
-            child: Text("No alerts yet",
-                style: GoogleFonts.inter(fontSize: 15)))
-            : ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: _alerts.length,
-          itemBuilder: (_, i) => _alertCard(_alerts[i]),
+    return WillPopScope(
+      onWillPop: () async {
+        _goHome();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF6F9FC),
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight + 18),
+          child: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _goHome,
+            ),
+            title: Text(
+              "Alerts",
+              style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+            ),
+            centerTitle: true,
+            backgroundColor: const Color(0xFF1F6FEB),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
+            clipBehavior: Clip.antiAlias,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(
+                bottom: Radius.circular(25),
+              ),
+            ),
+            bottom: const PreferredSize(
+              preferredSize: Size.fromHeight(18),
+              child: SizedBox(height: 18),
+            ),
+          ),
+        ),
+        body: RefreshIndicator(
+          onRefresh: _loadAlerts,
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _alerts.isEmpty
+              ? Center(
+            child: Text(
+              "No alerts yet",
+              style: GoogleFonts.inter(fontSize: 15),
+            ),
+          )
+              : ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _alerts.length,
+            itemBuilder: (_, i) => _alertCard(_alerts[i]),
+          ),
         ),
       ),
     );
   }
+
 }

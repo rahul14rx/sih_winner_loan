@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:loan2/pages/beneficiary_dashboard.dart';
 
 import 'package:loan2/services/beneficiary_service.dart';
 import 'package:loan2/services/sync_service.dart';
@@ -89,18 +90,16 @@ class _VerificationHistoryPageState extends State<VerificationHistoryPage> {
   }
 
   // ---------------- navigation helper (replaces missing goToDashboard) ----------------
+// ---------------- navigation helper ----------------
   void goToDashboard(BuildContext context, String userId) {
-    // Prefer pop if we have a back stack; otherwise send to a known route.
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    } else {
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/dashboard',
-            (route) => false,
-        arguments: {'userId': userId},
-      );
-    }
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => BeneficiaryDashboard(userId: userId),
+      ),
+          (route) => false,
+    );
   }
+
 
   // ---------------- data ----------------
 
@@ -522,17 +521,25 @@ class _VerificationHistoryPageState extends State<VerificationHistoryPage> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: Theme.of(context).copyWith(textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme)),
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF6F9FC),
-        // No AppBar (to avoid duplicate title) — we use the blue header instead
-        body: Column(
-          children: [
-            _header(),
-            Expanded(child: _body()),
-          ],
+      data: Theme.of(context).copyWith(
+        textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme),
+      ),
+      child: WillPopScope(
+        onWillPop: () async {
+          goToDashboard(context, widget.userId);
+          return false;
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF6F9FC),
+          body: Column(
+            children: [
+              _header(),
+              Expanded(child: _body()),
+            ],
+          ),
         ),
       ),
     );
   }
+
 }

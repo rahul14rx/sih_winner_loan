@@ -519,31 +519,62 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
   // ---------- UI ----------
 
   PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      centerTitle: true,
-      title: Text('Verification Page',
-          style: GoogleFonts.inter(
-              color: Colors.black, fontWeight: FontWeight.bold)),
-      iconTheme: const IconThemeData(color: Colors.black),
-      actions: [
-        if (_isRefreshing)
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: SizedBox(
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(kToolbarHeight + 18),
+      child: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(), // ✅ back to PendingVerificationPage
+        ),
+        backgroundColor: const Color(0xFF1F6FEB),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        centerTitle: true,
+        clipBehavior: Clip.antiAlias,
+
+        // ✅ round ONLY bottom
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            bottom: Radius.circular(25),
+          ),
+        ),
+
+        title: Text(
+          'Verification Page',
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+        ),
+
+        // small bottom space like other pages
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(18),
+          child: SizedBox(height: 18),
+        ),
+
+        actions: [
+          if (_isRefreshing)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
                 width: 20,
                 height: 20,
-                child:
-                CircularProgressIndicator(strokeWidth: 2, color: Colors.black)),
-          )
-        else
-          IconButton(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white, // ✅ visible on blue
+                ),
+              ),
+            )
+          else
+            IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: () => _refreshLoanData()),
-      ],
+              onPressed: () => _refreshLoanData(),
+            ),
+        ],
+      ),
     );
   }
+
 
   Widget _buildUtilizationCardStatic() {
     final sanctioned = (_currentLoan.amount is num)

@@ -130,7 +130,7 @@ class NyaySahayakApp extends StatelessWidget {
       cardColor: card,
       primaryColor: const Color(0xFF1E5AA8),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF1E5AA8),
+        backgroundColor: const Color(0xFF1E5AA8),
         foregroundColor: Colors.white,
         elevation: 0,
       ),

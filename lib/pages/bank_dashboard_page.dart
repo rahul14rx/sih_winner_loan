@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:loan2/services/database_helper.dart';
@@ -50,9 +52,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   final ScrollController _scroll = ScrollController();
   final GlobalKey _pendingKey = GlobalKey();
 
-  final PageController _pageController = PageController(viewportFraction: 0.92);
-  int _bannerIndex = 0;
-  Timer? _bannerTimer;
+  // ✅ UI-only: expand within same home page
+  bool _pendingExpanded = false;
 
   // -------------------- OFFLINE SYNC + SNAPSHOT STATE (ADDED) --------------------
   bool _isOnline = true;
@@ -64,23 +65,6 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   final Map<String, Future<String?>> _snapshotFuture = {};
   // -----------------------------------------------------------------------------
 
-  final List<_BannerItem> _banners = const [
-    _BannerItem(asset: 'assets/banners/banner1.png', url: 'https://www.india.gov.in/'),
-    _BannerItem(asset: 'assets/banners/banner2.png', url: 'https://www.myscheme.gov.in/'),
-    _BannerItem(asset: 'assets/banners/banner3.png', url: 'https://www.pmindia.gov.in/'),
-    _BannerItem(asset: 'assets/banners/banner4.jpg', url: 'https://www.digitalindia.gov.in/'),
-    _BannerItem(asset: 'assets/banners/banner5.jpg', url: 'https://www.uidai.gov.in/'),
-    _BannerItem(asset: 'assets/banners/banner6.jpg', url: 'https://www.uidai.gov.in/'),
-  ];
-
-  final List<_ServiceItem> _services = const [
-    _ServiceItem(label: 'NSKFDC', asset: 'assets/services/nskfdc.png', url: 'https://nskfdc.nic.in/'),
-    _ServiceItem(label: 'NSFDC', asset: 'assets/services/nsfdc.png', url: 'https://nsfdc.nic.in/'),
-    _ServiceItem(label: 'NBCFDC', asset: 'assets/services/nbcfdc.png', url: 'https://nbcfdc.gov.in/'),
-    _ServiceItem(label: 'PMSSS', asset: 'assets/services/pmsss.png', url: 'https://www.aicte-india.org/'),
-    _ServiceItem(label: 'PM-AJAY', asset: 'assets/services/pmajay.png', url: 'https://socialjustice.gov.in/'),
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -88,36 +72,16 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     SyncService.startListener(); // starts online/offline listener globally
 
     _loadSnapshot(); // show last data immediately if available
-    _loadData();     // then fetch fresh if online
+    _loadData(); // then fetch fresh if online
     _loadOfficerName();
-
 
     // -------------------- OFFLINE SYNC LISTENERS (ADDED) --------------------
     _initOfflineSync();
     // -----------------------------------------------------------------------
-
-    _pageController.addListener(() {
-      final p = _pageController.page;
-      if (p == null) return;
-      final i = p.round();
-      if (i != _bannerIndex && mounted) setState(() => _bannerIndex = i);
-    });
-
-    _bannerTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted || !_pageController.hasClients || _banners.isEmpty) return;
-      final next = (_bannerIndex + 1) % _banners.length;
-      _pageController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeInOut,
-      );
-    });
   }
 
   @override
   void dispose() {
-    _bannerTimer?.cancel();
-    _pageController.dispose();
     _scroll.dispose();
 
     // -------------------- OFFLINE SYNC CLEANUP (ADDED) --------------------
@@ -209,7 +173,10 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
         for (final item in processes) {
           if (item is! Map) continue;
 
-          final mediaUrl = (item['media_url'] ?? item['mediaUrl'] ?? item['media'] ?? '').toString().trim();
+          final mediaUrl =
+          (item['media_url'] ?? item['mediaUrl'] ?? item['media'] ?? '')
+              .toString()
+              .trim();
           if (mediaUrl.isNotEmpty) return mediaUrl;
 
           final fileId = item['file_id'] ?? item['fileId'];
@@ -240,7 +207,6 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     );
   }
 
-
   // ---------------------------------------------------------------------------
 
   Future<void> _loadData() async {
@@ -261,9 +227,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
         _stats = results[0] as Map<String, int>;
         _loans = results[1] as List<LoanApplication>;
         _isLoading = false;
-
-      });await _saveSnapshot();
-
+      });
+      await _saveSnapshot();
     } catch (e) {
       debugPrint("Dashboard Load Error: $e");
       if (mounted) setState(() => _isLoading = false);
@@ -298,7 +263,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     return fallback;
   }
 
-  static const double _reviewsCardH = 225.0;
+  // Reduced height a bit (UI-only)
+  static const double _reviewsCardH = 175.0;
+
   Future<File> _cacheFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File(p.join(dir.path, 'dashboard_cache_${widget.officerId}.json'));
@@ -381,127 +348,302 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     );
   }
 
+  void _openCreateBeneficiary() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateBeneficiaryPage(officerId: widget.officerId),
+      ),
+    ).then((_) => _loadData());
+  }
+
   @override
   Widget build(BuildContext context) {
     final bg = Theme.of(context).scaffoldBackgroundColor;
     const blue = Color(0xFF1E5AA8);
-
-    // theme helpers
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final card = Theme.of(context).cardColor;
-    final border = context.appBorder;
-    final titleColor = isDark ? Colors.white : const Color(0xFF111827);
-    final subColor = isDark ? const Color(0xFFCBD5E1) : Colors.grey[600]!;
-
-    final pendingItems = _filteredPending;
 
     return Scaffold(
       backgroundColor: bg,
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-          onRefresh: _loadData,
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final w = c.maxWidth;
-              final pad = w >= 900 ? 28.0 : (w >= 600 ? 20.0 : 16.0);
+            : LayoutBuilder(
+          builder: (context, c) {
+            final w = c.maxWidth;
+            final pad = w >= 900 ? 28.0 : (w >= 600 ? 20.0 : 16.0);
 
-              return CustomScrollView(
-                controller: _scroll,
-                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: _buildTopHeaderAndReviews(blue, pad, w),
+            // Expanded view inside same home screen
+            if (_pendingExpanded) {
+              return _buildPendingExpandedView(blue, pad);
+            }
+
+            // ✅ Home: no user scroll (but programmatic scroll works)
+            return CustomScrollView(
+              controller: _scroll,
+              physics: const NeverScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _buildTopHeaderAndReviews(blue, pad, w),
+                ),
+
+                SliverToBoxAdapter(
+                  key: _pendingKey,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(pad, 10, pad, 8),
+                    child: _buildPendingHeaderRow(blue),
                   ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
-                      child: _buildBannerSlider(),
-                    ),
+                ),
+
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
+                    child: _buildPendingPreview(blue),
                   ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(pad, 18, pad, 10),
-                      child: Text(
-                        "Recently Used Services",
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: titleColor,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
-                      child: _buildServicesSlider(w),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      key: _pendingKey,
-                      padding: EdgeInsets.fromLTRB(pad, 18, pad, 10),
-                      child: Row(
-                        children: [
-                          Text(
-                            "Pending Reviews",
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: titleColor,
+                ),
+
+                // ✅ Button pinned at bottom area (fix)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(pad, 12, pad, 12),
+                    child: Column(
+                      children: [
+                        const Spacer(),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton.icon(
+                            onPressed: _openCreateBeneficiary,
+                            icon: const Icon(Icons.person_add_alt_1_rounded),
+                            label: Text(
+                              "Create New Beneficiary",
+                              style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: blue,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
                           ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: blue.withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: blue.withOpacity(0.18)),
-                            ),
-                            child: Text(
-                              "${pendingItems.length}",
-                              style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: blue),
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                  if (pendingItems.isEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
-                        child: _buildEmptyStateCompact(),
-                      ),
-                    )
-                  else
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                            (context, i) => Padding(
-                          padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
-                          child: _buildProLoanCard(pendingItems[i]),
-                        ),
-                        childCount: pendingItems.length,
-                      ),
-                    ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 110)),
-                ],
-              );
-            },
-          ),
+                ),
+              ],
+            );
+          },
         ),
       ),
       bottomNavigationBar: OfficerNavBar(currentIndex: 0, officerId: widget.officerId),
     );
   }
 
+  // -------- Pending section (Home) --------
+
+  Widget _buildPendingHeaderRow(Color blue) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? Colors.white : const Color(0xFF111827);
+    final pendingItems = _filteredPending;
+
+    return Row(
+      children: [
+        Text(
+          "Pending Reviews",
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: titleColor,
+          ),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: blue.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: blue.withOpacity(0.18)),
+          ),
+          child: Text(
+            "${pendingItems.length}",
+            style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: blue),
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  Widget _buildPendingPreview(Color blue) {
+    final pendingItems = _filteredPending;
+
+    // keep your existing logic
+    final screenH = MediaQuery.sizeOf(context).height;
+    final previewMax = screenH < 740 ? 1 : 2;
+    final previewItems = pendingItems.take(previewMax).toList();
+
+    if (pendingItems.isEmpty) {
+      return _buildEmptyStateCompact();
+    }
+
+    return Column(
+      children: [
+        for (final loan in previewItems) _buildProLoanCard(loan),
+
+        if (pendingItems.length > previewItems.length)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Align(
+              alignment: Alignment.center,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _pendingExpanded = true), // "redirect" to pending page
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "View more",
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: blue,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: blue),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+
+  // -------- Expanded pending view (still within same Home screen) --------
+
+  Widget _buildPendingExpandedView(Color blue, double pad) {
+    final card = Theme.of(context).cardColor;
+    final pendingItems = _filteredPending;
+
+    return Column(
+      children: [
+        // ✅ BLUE HEADER (radius 25)
+        Padding(
+          padding: EdgeInsets.fromLTRB(pad, 14, pad, 10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: blue,
+              borderRadius: BorderRadius.circular(25),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.10),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => setState(() => _pendingExpanded = false),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 18),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    "Pending Reviews",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: _loadData,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // ✅ a bit more space before search bar
+        Padding(
+          padding: EdgeInsets.fromLTRB(pad, 12, pad, 10),
+          child: Container(
+            decoration: BoxDecoration(
+              color: card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: context.appBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 14,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: TextField(
+              onChanged: (v) => setState(() => _reviewQuery = v),
+              decoration: const InputDecoration(
+                hintText: "Search by name / Loan ID",
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                prefixIcon: Icon(Icons.search_rounded),
+              ),
+            ),
+          ),
+        ),
+
+        Expanded(
+          child: pendingItems.isEmpty
+              ? Padding(
+            padding: EdgeInsets.fromLTRB(pad, 20, pad, 0),
+            child: _buildEmptyStateCompact(),
+          )
+              : ListView.builder(
+            padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
+            itemCount: pendingItems.length,
+            itemBuilder: (context, i) => _buildProLoanCard(pendingItems[i]),
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  // -------- Header UI --------
+
   Widget _buildTopHeaderAndReviews(Color blue, double pad, double w) {
     final headerH = w >= 600 ? 170.0 : 160.0;
-    final overlap = 30.0;
-    final bottomGap = w >= 600 ? 18.0 : 16.0;
+    final overlap = 26.0;
+    final bottomGap = w >= 600 ? 14.0 : 12.0;
     final totalH = headerH + _reviewsCardH - overlap + bottomGap;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -541,7 +683,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                           'assets/logo.png',
                           width: 22,
                           height: 22,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.gavel_rounded, color: Colors.white),
+                          errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.gavel_rounded, color: Colors.white),
                         ),
                       ),
                     ),
@@ -569,12 +712,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                     icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
                   ),
                 ),
-
-                // -------------------- SYNC/QUEUE INDICATOR (ADDED) --------------------
                 const SizedBox(width: 10),
                 _syncChip(blue),
-                // --------------------------------------------------------------------
-
                 const SizedBox(width: 10),
                 PopupMenuButton<_UserMenu>(
                   offset: const Offset(0, 44),
@@ -586,7 +725,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                       case _UserMenu.settings:
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => ProfileSettingsPage(officerId: widget.officerId)),
+                          MaterialPageRoute(
+                            builder: (_) => ProfileSettingsPage(officerId: widget.officerId),
+                          ),
                         );
                         break;
                       case _UserMenu.logout:
@@ -615,11 +756,13 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Row(children: const [
-                                Icon(Icons.dark_mode_outlined, size: 20),
-                                SizedBox(width: 10),
-                                Text('Dark mode'),
-                              ]),
+                              Row(
+                                children: const [
+                                  Icon(Icons.dark_mode_outlined, size: 20),
+                                  SizedBox(width: 10),
+                                  Text('Dark mode'),
+                                ],
+                              ),
                               Switch(
                                 value: AppTheme.isDark,
                                 onChanged: (v) {
@@ -664,7 +807,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                       radius: 18,
                       backgroundColor: Colors.white,
                       child: Text(
-                        widget.officerId.isNotEmpty ? widget.officerId.substring(0, 2).toUpperCase() : "OF",
+                        widget.officerId.isNotEmpty
+                            ? widget.officerId.substring(0, 2).toUpperCase()
+                            : "OF",
                         style: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: blue),
                       ),
                     ),
@@ -692,7 +837,9 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
               child: TextField(
                 onChanged: (v) => setState(() => _reviewQuery = v),
                 style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF111827)),
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
                 decoration: InputDecoration(
                   hintText: "Search reviews",
                   hintStyle: GoogleFonts.inter(
@@ -701,7 +848,10 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                   ),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  prefixIcon: Icon(Icons.search_rounded, color: isDark ? const Color(0xFF9CA3AF) : Colors.grey[500]),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: isDark ? const Color(0xFF9CA3AF) : Colors.grey[500],
+                  ),
                 ),
               ),
             ),
@@ -717,20 +867,17 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     );
   }
 
+  // ✅ Change #1: remove "Your Reviews" title + move greeting to top
   Widget _buildReviewsCardLikePhoto() {
     const blue = Color(0xFF1E5AA8);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final card = Theme.of(context).cardColor;
     final border = context.appBorder;
-    final titleColor = isDark ? Colors.white : const Color(0xFF111827);
-    final muted = isDark ? Colors.white70 : Colors.grey[700];
 
     final displayName = _officerName.trim().isNotEmpty ? _officerName.trim() : widget.officerId;
 
     return Container(
       height: _reviewsCardH,
       decoration: BoxDecoration(
-        color: card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: border),
         boxShadow: [
@@ -742,43 +889,34 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "Your Reviews",
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: titleColor,
-              ),
-            ),
-            const SizedBox(height: 8),
+            // Greeting at top
             RichText(
               text: TextSpan(
-                style: GoogleFonts.poppins(color: titleColor),
                 children: [
                   TextSpan(
                     text: "Good afternoon, ",
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: muted,
+                      color: Colors.grey[700],
                     ),
                   ),
                   TextSpan(
                     text: displayName,
                     style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: titleColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF111827),
                     ),
                   ),
                 ],
               ),
             ),
-            const Spacer(),
+            const SizedBox(height: 12),
             _buildStatCardsRowLikePhoto(blue),
           ],
         ),
@@ -787,48 +925,48 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
   }
 
   Widget _buildStatCardsRowLikePhoto(Color blue) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        children: [
-          _photoStatCard(
-            title: "Pending",
-            count: _stats['pending'] ?? 0,
-            icon: Icons.hourglass_top_rounded,
-            iconBg: const Color(0xFFFFF3E0),
-            iconColor: const Color(0xFFFF8A00),
-            onTap: _scrollToPending,
-          ),
-          const SizedBox(width: 12),
-          _photoStatCard(
-            title: "Verified",
-            count: _stats['verified'] ?? 0,
-            icon: Icons.verified_rounded,
-            iconBg: const Color(0xFFE8F5E9),
-            iconColor: const Color(0xFF16A34A),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => HistoryPage(officerId: widget.officerId)),
-              );
-            },
-          ),
-          const SizedBox(width: 12),
-          _photoStatCard(
-            title: "Rejected",
-            count: _stats['rejected'] ?? 0,
-            icon: Icons.cancel_rounded,
-            iconBg: const Color(0xFFFFEBEE),
-            iconColor: const Color(0xFFDC2626),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => HistoryPage(officerId: widget.officerId)),
-              );
-            },
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        _photoStatCard(
+          title: "Pending",
+          count: _stats['pending'] ?? 0,
+          icon: Icons.hourglass_top_rounded,
+          iconBg: const Color(0xFFFFF3E0),
+          iconColor: const Color(0xFFFF8A00),
+          tintColor: const Color(0xFFFF8A00),
+          onTap: _scrollToPending,
+        ),
+        const SizedBox(width: 12),
+        _photoStatCard(
+          title: "Verified",
+          count: _stats['verified'] ?? 0,
+          icon: Icons.verified_rounded,
+          iconBg: const Color(0xFFE8F5E9),
+          iconColor: const Color(0xFF16A34A),
+          tintColor: const Color(0xFF16A34A),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => HistoryPage(officerId: widget.officerId)),
+            );
+          },
+        ),
+        const SizedBox(width: 12),
+        _photoStatCard(
+          title: "Rejected",
+          count: _stats['rejected'] ?? 0,
+          icon: Icons.cancel_rounded,
+          iconBg: const Color(0xFFFFEBEE),
+          iconColor: const Color(0xFFDC2626),
+          tintColor: const Color(0xFFDC2626),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => HistoryPage(officerId: widget.officerId)),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -838,14 +976,12 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     required IconData icon,
     required Color iconBg,
     required Color iconColor,
+    required Color tintColor,
     required VoidCallback onTap,
     Color? cardBg,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF12233D) : (cardBg ?? Colors.white);
-    final border = context.appBorder;
-    final titleColor = isDark ? Colors.white : const Color(0xFF111827);
-    final subColor = isDark ? const Color(0xFFCBD5E1) : Colors.grey[600]!;
+    final bg = tintColor.withOpacity(0.14);
+    final borderColor = tintColor.withOpacity(0.22);
 
     return Expanded(
       child: InkWell(
@@ -856,188 +992,38 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 14,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            border: Border.all(color: borderColor),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
                 child: Icon(icon, color: iconColor, size: 22),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 "$count",
                 style: GoogleFonts.poppins(
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: FontWeight.w800,
-                  color: titleColor,
+                  color: const Color(0xFF111827),
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 title,
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: subColor,
+                  color: Colors.grey[700],
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildBannerSlider() {
-    return Column(
-      children: [
-        LayoutBuilder(
-          builder: (context, c) {
-            const bannerAspect = 1800 / 500;
-            final viewportW = c.maxWidth;
-            final pageW = viewportW * 0.92;
-            final h = (pageW / bannerAspect).clamp(165.0, 230.0).toDouble();
-
-            return SizedBox(
-              height: h,
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: _banners.length,
-                itemBuilder: (context, i) {
-                  final b = _banners[i];
-                  return GestureDetector(
-                    onTap: () => _openUrl(b.url),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 6),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.10),
-                            blurRadius: 18,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Image.asset(
-                        b.asset,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: const Color(0xFF0F172A),
-                          child: Center(
-                            child: Text(
-                              "Banner ${i + 1}",
-                              style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(_banners.length, (i) {
-            final active = i == _bannerIndex;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              height: 7,
-              width: active ? 18 : 7,
-              decoration: BoxDecoration(
-                color: active ? const Color(0xFF1E5AA8) : const Color(0xFFD1D5DB),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildServicesSlider(double w) {
-    final tileW = w >= 900 ? 100.0 : (w >= 600 ? 94.0 : 84.0);
-
-    final card = Theme.of(context).cardColor;
-    final border = context.appBorder;
-    final titleColor = Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF111827);
-
-    return SizedBox(
-      height: 88,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: _services.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, i) {
-          final s = _services[i];
-          return InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () => _openUrl(s.url),
-            child: Container(
-              width: tileW,
-              decoration: BoxDecoration(
-                color: card,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: border),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
-                    blurRadius: 14,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Image.asset(
-                      s.asset,
-                      height: 32,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Icon(
-                        Icons.account_balance_rounded,
-                        color: Colors.grey[500],
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      s.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: titleColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
       ),
     );
   }
@@ -1053,7 +1039,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     final chipText = isDark ? Colors.white : const Color(0xFF1E5AA8);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: card,
         borderRadius: BorderRadius.circular(16),
@@ -1077,13 +1063,12 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
             ).then((_) => _loadData());
           },
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                // -------------------- SNAPSHOT THUMBNAIL (ADDED) --------------------
                 Container(
-                  width: 50,
-                  height: 50,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
                     color: const Color(0xFF0F1B2D),
                     borderRadius: BorderRadius.circular(12),
@@ -1104,7 +1089,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                                 style: GoogleFonts.poppins(
                                   color: const Color(0xFF60A5FA),
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 20,
+                                  fontSize: 18,
                                 ),
                               ),
                             ),
@@ -1116,7 +1101,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                             style: GoogleFonts.poppins(
                               color: const Color(0xFF60A5FA),
                               fontWeight: FontWeight.bold,
-                              fontSize: 20,
+                              fontSize: 18,
                             ),
                           ),
                         );
@@ -1124,18 +1109,18 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
                     ),
                   ),
                 ),
-                // -------------------------------------------------------------------
-
-                const SizedBox(width: 16),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         loan.applicantName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                          fontSize: 15,
                           color: titleColor,
                         ),
                       ),
@@ -1187,7 +1172,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
     final subColor = isDark ? const Color(0xFFCBD5E1) : Colors.grey[600]!;
 
     return Container(
-      padding: const EdgeInsets.all(26),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: card,
         borderRadius: BorderRadius.circular(18),
@@ -1196,8 +1181,8 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.check_circle_outline_rounded, size: 70, color: subColor.withOpacity(0.25)),
-          const SizedBox(height: 14),
+          Icon(Icons.check_circle_outline_rounded, size: 66, color: subColor.withOpacity(0.25)),
+          const SizedBox(height: 12),
           Text(
             "All caught up!",
             style: GoogleFonts.poppins(
@@ -1206,7 +1191,7 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             "No pending loans to review.",
             style: GoogleFonts.inter(color: subColor, fontWeight: FontWeight.w600),
@@ -1215,17 +1200,4 @@ class _BankDashboardPageState extends State<BankDashboardPage> {
       ),
     );
   }
-}
-
-class _BannerItem {
-  final String asset;
-  final String url;
-  const _BannerItem({required this.asset, required this.url});
-}
-
-class _ServiceItem {
-  final String label;
-  final String asset;
-  final String url;
-  const _ServiceItem({required this.label, required this.asset, required this.url});
 }

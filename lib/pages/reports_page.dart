@@ -984,7 +984,7 @@ class _ReportsPageState extends State<ReportsPage> {
                       touchTooltipData: BarTouchTooltipData(
                         tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         tooltipMargin: 10,
-                        tooltipRoundedRadius: 10,
+                        tooltipBorderRadius: BorderRadius.circular(8),
                         getTooltipItem: (group, groupIndex, rod, rodIndex) {
                           final i = group.x.toInt();
                           final name =

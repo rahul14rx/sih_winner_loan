@@ -1,394 +1,246 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:loan2/widgets/officer_nav_bar.dart';
 
-class HelpSupportPage extends StatefulWidget {
-  final String userId;
-  const HelpSupportPage({super.key, required this.userId});
+class HelpSupportPage extends StatelessWidget {
+  final String officerId;
+  const HelpSupportPage({super.key, required this.officerId});
 
-  @override
-  State<HelpSupportPage> createState() => _HelpSupportPageState();
-}
+  // Keep the blue accent; let the rest follow theme.
+  static const _accent = Color(0xFF1E5AA8);
+  static const double _headerRadius = 25;
 
-class _HelpSupportPageState extends State<HelpSupportPage> {
-  // ----------------------------
-  // Complaint Form State
-  // ----------------------------
-  bool showForm = false;
-  String? selectedCategory;
-  String? selectedSubCategory;
-  final TextEditingController issueCtrl = TextEditingController();
-
-  // Problem Categories
-  final Map<String, List<String>> problems = {
-    "Verification Issues": [
-      "GPS accuracy issues",
-      "Camera not opening",
-      "Media upload failing",
-      "Step not updating"
-    ],
-    "Login / OTP Issues": [
-      "Not receiving OTP",
-      "Invalid OTP",
-      "Phone number mismatch"
-    ],
-    "Loan Related": [
-      "Loan not visible",
-      "Incorrect process steps",
-      "Progress not updating",
-    ],
-    "App Issues": [
-      "App crashing",
-      "Slow performance",
-      "UI not loading",
-    ]
-  };
-
-  // FAQs
-  final List<Map<String, String>> faqList = [
-    {
-      "q": "Why is my GPS location not accurate?",
-      "a":
-      "Ensure you are outdoors or near a window, and enable high-accuracy location mode."
-    },
-    {
-      "q": "Why is my verification not moving to the next step?",
-      "a": "Ensure you have uploaded a clear image and stable internet."
-    },
-    {
-      "q": "How to fix OTP not receiving?",
-      "a":
-      "Check network signal, disable DND, or try again after 60 seconds."
-    },
-    {
-      "q": "Why can't I see my loan details?",
-      "a":
-      "Your loan may be pending officer verification. Try refreshing after some time."
-    },
-  ];
-
-  // -------------------------------------------------------
-  // Launch functions
-  // -------------------------------------------------------
-  Future<void> _callSupport() async {
-    await launchUrl(Uri.parse("tel:9150462438"));
-  }
-
-  Future<void> _emailSupport() async {
-    final Uri email = Uri(
-      scheme: "mailto",
-      path: "support@nyaysahayak.gov.in",
-      query: "subject=App Support Request&body=User ID: ${widget.userId}\n\nDescribe your issue:",
-    );
-    await launchUrl(email);
-  }
-
-  // -------------------------------------------------------
-  // Submit Complaint
-  // -------------------------------------------------------
-  void _submitComplaint() {
-    if (selectedCategory == null ||
-        selectedSubCategory == null ||
-        issueCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Please fill all fields before submitting")),
-      );
-      return;
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final uri = Uri(scheme: 'tel', path: phoneNumber);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
     }
-
-    setState(() {
-      showForm = false;
-      selectedCategory = null;
-      selectedSubCategory = null;
-      issueCtrl.clear();
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Complaint filed successfully!"),
-        backgroundColor: Colors.green,
-      ),
-    );
   }
 
-  // -------------------------------------------------------
-  // UI
-  // -------------------------------------------------------
+  Future<void> _sendEmail(String email) async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: email,
+      queryParameters: {
+        'subject': 'Officer Support Request',
+        'body': 'Officer ID: $officerId\n\nDescribe your issue:',
+      },
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Help & Support"),
-        backgroundColor: const Color(0xFF1F6FEB),
-      ),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
+    final bg = theme.scaffoldBackgroundColor;
+    final card = theme.cardColor;
+    final onSurface = theme.colorScheme.onSurface;
+    final divider = theme.dividerColor.withOpacity(isDark ? 0.15 : 0.35);
+    final border = isDark ? const Color(0xFF1F2A44) : Colors.grey.shade300;
+
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          'Help & Support',
+          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(_headerRadius)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF2A6CCF), _accent],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: OfficerNavBar(officerId: officerId, currentIndex: 5),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // -------------------------------------------------------
-            // QUICK SUPPORT CARDS
-            // -------------------------------------------------------
-            Text("Quick Assistance",
-                style: GoogleFonts.inter(
-                    fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 14),
-
-            Row(
-              children: [
-                Expanded(child: _supportCard(
-                  icon: Icons.call,
-                  color: Colors.green,
-                  title: "Call Support",
-                  onTap: _callSupport,
-                )),
-                const SizedBox(width: 14),
-                Expanded(child: _supportCard(
-                  icon: Icons.email_outlined,
-                  color: Colors.orange,
-                  title: "Send Email",
-                  onTap: _emailSupport,
-                )),
-              ],
-            ),
-
-            const SizedBox(height: 20),
-
-            // -------------------------------------------------------
-            // RAISE COMPLAINT
-            // -------------------------------------------------------
-            Text("Raise a Complaint",
-                style: GoogleFonts.inter(
-                    fontWeight: FontWeight.bold, fontSize: 18)),
+            _sectionTitle('Officer Support', onSurface),
             const SizedBox(height: 12),
-
-            InkWell(
-              onTap: () => setState(() => showForm = !showForm),
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5FF),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.report_problem_outlined,
-                        color: Colors.red.shade700),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        showForm
-                            ? "Hide Complaint Form"
-                            : "Open Complaint Form",
-                        style: GoogleFonts.inter(
-                            fontSize: 15, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    Icon(
-                      showForm
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      color: Colors.grey[700],
-                    )
-                  ],
-                ),
+            _cardBox(
+              color: card,
+              border: border,
+              child: Column(
+                children: [
+                  _contactTile(
+                    icon: Icons.phone_in_talk_rounded,
+                    title: 'Technical Helpline',
+                    subtitle: '1800-11-0099 (Internal)',
+                    badgeColor: const Color(0xFF22C55E),
+                    onTap: () => _makePhoneCall('1800110099'),
+                    onSurface: onSurface,
+                    isDark: isDark,
+                  ),
+                  Divider(height: 1, color: divider, indent: 16, endIndent: 16),
+                  _contactTile(
+                    icon: Icons.email_rounded,
+                    title: 'IT Support Email',
+                    subtitle: 'tech-support@nyaysahayak.gov.in',
+                    badgeColor: const Color(0xFF38BDF8),
+                    onTap: () => _sendEmail('tech-support@nyaysahayak.gov.in'),
+                    onSurface: onSurface,
+                    isDark: isDark,
+                  ),
+                ],
               ),
             ),
-
-            const SizedBox(height: 14),
-
-            if (showForm) _complaintForm(),
-
-            const SizedBox(height: 28),
-
-            // -------------------------------------------------------
-            // FAQ SECTION
-            // -------------------------------------------------------
-            Text("Frequently Asked Questions",
-                style: GoogleFonts.inter(
-                    fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 14),
-
-            ...faqList.map((faq) => _faqTile(faq["q"]!, faq["a"]!)).toList(),
-
-            const SizedBox(height: 40),
+            const SizedBox(height: 24),
+            _sectionTitle('Officer FAQs', onSurface),
+            const SizedBox(height: 12),
+            _faqTile(
+              title: 'How do I approve a loan verification?',
+              content:
+              'Open the loan detail page, review the uploaded photos/videos, and tap “Approve” if they meet the requirements.',
+              card: card,
+              border: border,
+              onSurface: onSurface,
+              divider: divider,
+            ),
+            _faqTile(
+              title: 'What if the beneficiary uploaded wrong photos?',
+              content:
+              'Tap “Reject” on that proof. The beneficiary will be notified to re-upload the correct evidence.',
+              card: card,
+              border: border,
+              onSurface: onSurface,
+              divider: divider,
+            ),
+            _faqTile(
+              title: 'Can I verify beneficiaries offline?',
+              content:
+              'The officer dashboard needs internet to fetch and update verification data in real time.',
+              card: card,
+              border: border,
+              onSurface: onSurface,
+              divider: divider,
+            ),
+            _faqTile(
+              title: 'How do I add a new beneficiary manually?',
+              content:
+              'From Dashboard, tap “New Beneficiary”, fill the details, and a login SMS will be sent to them.',
+              card: card,
+              border: border,
+              onSurface: onSurface,
+              divider: divider,
+            ),
           ],
         ),
       ),
     );
   }
 
-  // -------------------------------------------------------
-  // SUPPORT CARD
-  // -------------------------------------------------------
-  Widget _supportCard({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 22),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 10,
-                offset: const Offset(0, 5))
-          ],
+  // ---------- widgets ----------
+
+  Widget _sectionTitle(String t, Color onSurface) => Text(
+    t,
+    style: GoogleFonts.poppins(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+      color: onSurface,
+    ),
+  );
+
+  Widget _cardBox({required Widget child, required Color color, required Color border}) => Container(
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: border),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.08),
+          blurRadius: 18,
+          offset: const Offset(0, 8),
         ),
-        child: Column(
-          children: [
-            Icon(icon, size: 36, color: color),
-            const SizedBox(height: 8),
-            Text(title,
-                style: GoogleFonts.inter(
-                    fontSize: 15, fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // -------------------------------------------------------
-  // COMPLAINT FORM
-  // -------------------------------------------------------
-  Widget _complaintForm() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 4))
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("Select Problem Category",
-              style: GoogleFonts.inter(
-                  fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-
-          DropdownButtonFormField<String>(
-            value: selectedCategory,
-            hint: const Text("Choose category"),
-            decoration: _inputDecoration(),
-            items: problems.keys
-                .map((c) =>
-                DropdownMenuItem(value: c, child: Text(c)))
-                .toList(),
-            onChanged: (v) {
-              setState(() {
-                selectedCategory = v;
-                selectedSubCategory = null;
-              });
-            },
-          ),
-
-          const SizedBox(height: 16),
-
-          if (selectedCategory != null)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Select Sub Category",
-                    style: GoogleFonts.inter(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-
-                DropdownButtonFormField<String>(
-                  value: selectedSubCategory,
-                  hint: const Text("Choose sub-category"),
-                  decoration: _inputDecoration(),
-                  items: (problems[selectedCategory] ?? [])
-                      .map((sc) =>
-                      DropdownMenuItem(value: sc, child: Text(sc)))
-                      .toList(),
-                  onChanged: (v) => setState(() => selectedSubCategory = v),
-                ),
-              ],
-            ),
-
-          const SizedBox(height: 20),
-
-          Text("Describe Your Issue",
-              style: GoogleFonts.inter(
-                  fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-
-          TextField(
-            controller: issueCtrl,
-            maxLines: 4,
-            decoration: _inputDecoration().copyWith(
-              hintText: "Enter issue details...",
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          ElevatedButton.icon(
-            onPressed: _submitComplaint,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1F6FEB),
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            icon: const Icon(Icons.send),
-            label: const Text("Submit Complaint"),
-          )
-        ],
-      ),
-    );
-  }
-
-  // -------------------------------------------------------
-  // FAQ TILE
-  // -------------------------------------------------------
-  Widget _faqTile(String q, String a) {
-    return ExpansionTile(
-      title: Text(q,
-          style:
-          GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text(a, style: GoogleFonts.inter(fontSize: 13)),
-        )
       ],
+    ),
+    child: child,
+  );
+
+  Widget _contactTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color badgeColor,
+    required VoidCallback onTap,
+    required Color onSurface,
+    required bool isDark,
+  }) {
+    return ListTile(
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: badgeColor.withOpacity(isDark ? 0.18 : 0.12),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: isDark ? Colors.white : badgeColor, size: 22),
+      ),
+      title: Text(
+        title,
+        style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15, color: onSurface),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: GoogleFonts.inter(fontSize: 13, color: onSurface.withOpacity(0.7)),
+      ),
+      trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16, color: onSurface.withOpacity(0.6)),
     );
   }
 
-  // Input style
-  InputDecoration _inputDecoration() {
-    return InputDecoration(
-      filled: true,
-      fillColor: const Color(0xFFF6F8FF),
-      border:
-      OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      enabledBorder: OutlineInputBorder(
-        borderSide:
-        const BorderSide(color: Color(0xFFD3DAE6), width: 1),
+  Widget _faqTile({
+    required String title,
+    required String content,
+    required Color card,
+    required Color border,
+    required Color onSurface,
+    required Color divider,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: card,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderSide:
-        const BorderSide(color: Color(0xFF1F6FEB), width: 1.4),
-        borderRadius: BorderRadius.circular(12),
+      child: Theme(
+        data: ThemeData().copyWith(dividerColor: divider),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+          collapsedIconColor: onSurface.withOpacity(0.7),
+          iconColor: onSurface,
+          title: Text(
+            title,
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14, color: onSurface),
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Text(
+                content,
+                style: GoogleFonts.inter(fontSize: 13, color: onSurface.withOpacity(0.7), height: 1.5),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -103,6 +103,17 @@ class DatabaseHelper {
       )
     ''');
   }
+  Future<bool> _columnExists(Database db, String table, String column) async {
+    final rows = await db.rawQuery('PRAGMA table_info($table)');
+    return rows.any((r) => (r['name']?.toString() ?? '').toLowerCase() == column.toLowerCase());
+  }
+
+  Future<void> _addColumnIfMissing(Database db, String table, String column, String typeAndExtras) async {
+    final exists = await _columnExists(db, table, column);
+    if (!exists) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $typeAndExtras');
+    }
+  }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
@@ -142,16 +153,16 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 7) {
-        await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAddress TEXT');
-        await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAsset TEXT');
+      await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAddress TEXT');
+      await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAsset TEXT');
     }
     if (oldVersion < 8) {
       await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colExtraJson TEXT');
     }
     if (oldVersion < 9) {
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLatitude TEXT');
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLongitude TEXT');
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLocationConfidence TEXT');
+      await _addColumnIfMissing(db, tableImages, colLatitude, 'TEXT');
+      await _addColumnIfMissing(db, tableImages, colLongitude, 'TEXT');
+      await _addColumnIfMissing(db, tableImages, colLocationConfidence, 'TEXT');
     }
   }
 
@@ -217,7 +228,7 @@ class DatabaseHelper {
 
     final resultBen = await db.rawQuery('SELECT COUNT(*) FROM $tableBeneficiaries');
     final benCount = Sqflite.firstIntValue(resultBen) ?? 0;
-    
+
     final resultAct = await db.rawQuery('SELECT COUNT(*) FROM $tableOfficerActions');
     final actCount = Sqflite.firstIntValue(resultAct) ?? 0;
 
@@ -241,15 +252,15 @@ class DatabaseHelper {
           if (await f.exists()) {
             await f.delete();
             debugPrint("✅ Local file deleted: $path");
-          } 
+          }
         } catch (e) {
-           debugPrint("❌ Error deleting local file: $e");
+          debugPrint("❌ Error deleting local file: $e");
         }
       }
     }
     final result = await db.delete(tableImages, where: '$colId = ?', whereArgs: [id]);
     debugPrint("✅ Local DB record deleted from table '$tableImages' with id: $id");
-    return result; 
+    return result;
   }
 
   Future<int> insertPendingBeneficiary({
