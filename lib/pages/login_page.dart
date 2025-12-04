@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loan2/pages/bank_dashboard_page.dart';
 import 'package:loan2/pages/beneficiary_dashboard.dart';
+import 'package:loan2/services/api.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -55,7 +57,9 @@ class _LoginPageState extends State<LoginPage> {
     }
   };
 
-  String getStr(String key) => _localizedStrings[_selectedLang]?[key] ?? key;
+  String getStr(String key) {
+    return _localizedStrings[_selectedLang]?[key] ?? key;
+  }
 
   void _showBankOfficialLogin(BuildContext context) {
     final officerIdController = TextEditingController();
@@ -71,25 +75,83 @@ class _LoginPageState extends State<LoginPage> {
         children: [
           TextField(
             controller: officerIdController,
-            decoration: _inputDecoration(getStr('officer_id'), Icons.badge_outlined),
+            decoration: _inputDecoration(
+              getStr('officer_id'),
+              Icons.badge_outlined,
+            ),
           ),
           const SizedBox(height: 20),
           TextField(
             controller: passwordController,
             obscureText: true,
-            decoration: _inputDecoration(getStr('password'), Icons.lock_outline_rounded),
+            decoration: _inputDecoration(
+              getStr('password'),
+              Icons.lock_outline_rounded,
+            ),
           ),
           const SizedBox(height: 40),
           _PrimaryButton(
             text: getStr('secure_login_btn'),
-            onPressed: () {
-              // Skip auth: close bottom sheet then navigate using root navigator
-              Navigator.pop(sheetCtx);
-              Navigator.of(context, rootNavigator: true).pushReplacement(
-                MaterialPageRoute(
-                  builder: (_) => BankDashboardPage(officerId: 'OFF001'), // dummy / test id
-                ),
-              );
+            onPressed: () async {
+              final officerId = officerIdController.text.trim();
+              final password = passwordController.text.trim();
+
+              if (officerId.isEmpty || password.isEmpty) {
+                ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                  const SnackBar(
+                    content: Text("Please enter Officer ID and Password"),
+                  ),
+                );
+                return;
+              }
+
+              try {
+                final result = await login_user(officerId, password);
+                // Debug
+                // ignore: avoid_print
+                print('LOGIN RESULT => $result');
+
+                if (!sheetCtx.mounted) return;
+
+                // ✅ Success condition based on your actual response
+                final bool isSuccess =
+                    result.isNotEmpty && result['officer_id'] != null;
+
+                // If you want to be extra strict:
+                // final bool isSuccess =
+                //   result.isNotEmpty &&
+                //   result['officer_id']?.toString() == officerId;
+
+                if (isSuccess) {
+                  Navigator.pop(sheetCtx);
+                  Navigator.of(context, rootNavigator: true).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) => BankDashboardPage(
+                        officerId: result['officer_id'].toString(),
+                      ),
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                    const SnackBar(
+                      content: Text("Login Failed. Invalid credentials."),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (!sheetCtx.mounted) return;
+                // ignore: avoid_print
+                print('LOGIN ERROR => $e');
+                ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      "Something went wrong. Please try again later.",
+                    ),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
           ),
         ],
@@ -97,9 +159,12 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+
+  // --- BENEFICIARY LOGIN SHEET (Fixed State Logic) ---
   void _showBeneficiaryLogin(BuildContext context) {
     final phoneController = TextEditingController();
 
+    // OTP Controllers
     final otp1 = TextEditingController();
     final otp2 = TextEditingController();
     final otp3 = TextEditingController();
@@ -117,45 +182,71 @@ class _LoginPageState extends State<LoginPage> {
       builder: (sheetCtx) => StatefulBuilder(
         builder: (BuildContext ctx, StateSetter setSheetState) {
           return _LoginBottomSheet(
-            title: isOtpSent ? getStr('enter_otp') : getStr('beneficiary_login'),
+            title: isOtpSent
+                ? getStr('enter_otp')
+                : getStr('beneficiary_login'),
             subtitle: isOtpSent
                 ? "${getStr('otp_sent')} +91 ${phoneController.text}"
                 : getStr('beneficiary_subtitle'),
             children: [
               if (!isOtpSent) ...[
+                // Step 1: Phone Number
                 TextField(
                   controller: phoneController,
                   keyboardType: TextInputType.phone,
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10)
+                    LengthLimitingTextInputFormatter(10),
                   ],
-                  decoration: _inputDecoration(getStr('mobile_number'), Icons.phone_android_rounded),
+                  decoration: _inputDecoration(
+                    getStr('mobile_number'),
+                    Icons.phone_android_rounded,
+                  ),
                 ),
                 const SizedBox(height: 30),
                 _PrimaryButton(
                   text: getStr('send_otp'),
-                  color: const Color(0xFF138808),
+                  color: const Color(0xFF138808), // Green
                   onPressed: () {
                     if (phoneController.text.length == 10) {
-                      setSheetState(() => isOtpSent = true);
-                      Future.delayed(const Duration(milliseconds: 200), () {
-                        if (focus1.canRequestFocus) focus1.requestFocus();
+                      setSheetState(() {
+                        isOtpSent = true;
+                      });
+                      // Auto-focus first OTP box
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        if (focus1.canRequestFocus) {
+                          focus1.requestFocus();
+                        }
                       });
                     } else {
                       ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text("Enter a valid 10-digit number")),
+                        const SnackBar(
+                          content: Text("Enter a valid 10-digit number"),
+                        ),
                       );
                     }
                   },
                 ),
               ] else ...[
+                // Step 2: OTP
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _OtpBox(controller: otp1, focusNode: focus1, nextFocus: focus2, autofocus: true),
-                    _OtpBox(controller: otp2, focusNode: focus2, nextFocus: focus3),
-                    _OtpBox(controller: otp3, focusNode: focus3, nextFocus: null),
+                    _OtpBox(
+                      controller: otp1,
+                      focusNode: focus1,
+                      nextFocus: focus2,
+                    ),
+                    _OtpBox(
+                      controller: otp2,
+                      focusNode: focus2,
+                      nextFocus: focus3,
+                    ),
+                    _OtpBox(
+                      controller: otp3,
+                      focusNode: focus3,
+                      nextFocus: null,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 30),
@@ -163,18 +254,24 @@ class _LoginPageState extends State<LoginPage> {
                   text: getStr('verify_otp'),
                   color: const Color(0xFF138808),
                   onPressed: () {
-                    final otp = otp1.text + otp2.text + otp3.text;
+                    String otp = otp1.text + otp2.text + otp3.text;
+                    // Mock OTP is 200
                     if (otp == '200') {
-                      // Skip auth: close bottom sheet then navigate using root navigator
-                      Navigator.pop(sheetCtx);
-                      Navigator.of(context, rootNavigator: true).pushReplacement(
+                      Navigator.pop(sheetCtx); // Close sheet
+                      Navigator.of(context, rootNavigator: true)
+                          .pushReplacement(
                         MaterialPageRoute(
-                          builder: (_) => BeneficiaryDashboard(userId: phoneController.text),
+                          builder: (_) => BeneficiaryDashboard(
+                            userId: phoneController.text,
+                          ),
                         ),
                       );
                     } else {
                       ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text("Invalid OTP (Try 200)")),
+                        const SnackBar(
+                          content:
+                          Text("Invalid OTP (Try 200)"),
+                        ),
                       );
                     }
                   },
@@ -197,7 +294,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-                )
+                ),
               ]
             ],
           );
@@ -209,7 +306,10 @@ class _LoginPageState extends State<LoginPage> {
   InputDecoration _inputDecoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon, color: const Color(0xFF435E91)),
+      prefixIcon: Icon(
+        icon,
+        color: const Color(0xFF435E91),
+      ),
       filled: true,
       fillColor: Colors.grey[50],
       border: OutlineInputBorder(
@@ -218,7 +318,9 @@ class _LoginPageState extends State<LoginPage> {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFF435E91)),
+        borderSide: const BorderSide(
+          color: Color(0xFF435E91),
+        ),
       ),
     );
   }
@@ -229,6 +331,7 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: const Color(0xFFFFFFFF),
       body: Stack(
         children: [
+          // --- Background Shapes ---
           Positioned(
             top: -300,
             right: -300,
@@ -236,8 +339,12 @@ class _LoginPageState extends State<LoginPage> {
               width: 1000,
               height: 700,
               decoration: BoxDecoration(
+                shape: BoxShape.rectangle,
                 gradient: RadialGradient(
-                  colors: [const Color(0xFFFF8A18).withOpacity(0.30), Colors.transparent],
+                  colors: [
+                    const Color(0xFFFF8A18).withOpacity(0.30),
+                    Colors.transparent,
+                  ], // Saffron hint
                 ),
               ),
             ),
@@ -249,41 +356,77 @@ class _LoginPageState extends State<LoginPage> {
               width: 1000,
               height: 600,
               decoration: BoxDecoration(
+                shape: BoxShape.rectangle,
                 gradient: RadialGradient(
-                  colors: [const Color(0xFF15FB02).withOpacity(0.30), Colors.transparent],
+                  colors: [
+                    const Color(0xFF15FB02).withOpacity(0.30),
+                    Colors.transparent,
+                  ], // Green hint
                 ),
               ),
             ),
           ),
+
+          // --- Language Switcher ---
           Positioned(
             top: 50,
             right: 20,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 6,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF000080)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                border: Border.all(
+                  color: const Color(0xFF000080),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                  ),
+                ],
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedLang,
-                  icon: const Icon(Icons.language, size: 20, color: Color(0xFF000080)),
+                  icon: const Icon(
+                    Icons.language,
+                    size: 20,
+                    color: Color(0xFF000080),
+                  ),
                   isDense: true,
-                  onChanged: (v) => setState(() => _selectedLang = v!),
+                  onChanged: (v) =>
+                      setState(() => _selectedLang = v!),
                   items: const [
-                    DropdownMenuItem(value: 'en', child: Text("English", style: TextStyle(fontSize: 14))),
-                    DropdownMenuItem(value: 'hi', child: Text("हिंदी", style: TextStyle(fontSize: 14))),
+                    DropdownMenuItem(
+                      value: 'en',
+                      child: Text(
+                        "English",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'hi',
+                      child: Text(
+                        "हिंदी",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
           ),
+
+          // --- Main Content ---
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
@@ -292,11 +435,11 @@ class _LoginPageState extends State<LoginPage> {
                       child: SizedBox(
                         width: 150,
                         height: 120,
-                        child: Image.network(
-                          'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/1800px-Emblem_of_India.svg.png',
-                          height: 100,
-                          errorBuilder: (_, __, ___) =>
-                          const Icon(Icons.account_balance, size: 50, color: Colors.grey),
+                        // Placeholder for emblem
+                        child: const Icon(
+                          Icons.account_balance,
+                          size: 80,
+                          color: Color(0xFF000080),
                         ),
                       ),
                     ),
@@ -322,6 +465,8 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     const SizedBox(height: 60),
+
+                    // Login Cards
                     _LoginOptionCard(
                       title: getStr('official_login'),
                       subtitle: getStr('official_subtitle'),
@@ -343,7 +488,11 @@ class _LoginPageState extends State<LoginPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.verified_user_outlined, size: 16, color: Colors.blue[900]),
+                        Icon(
+                          Icons.verified_user_outlined,
+                          size: 16,
+                          color: Colors.grey[400],
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           getStr('secure_footer'),
@@ -365,6 +514,8 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
+
+// --- REUSABLE WIDGETS ---
 
 class _LoginBottomSheet extends StatelessWidget {
   final String title;
@@ -388,7 +539,9 @@ class _LoginBottomSheet extends StatelessWidget {
       ),
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(32),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -414,7 +567,13 @@ class _LoginBottomSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(subtitle, style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[600])),
+          Text(
+            subtitle,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              color: Colors.grey[600],
+            ),
+          ),
           const SizedBox(height: 32),
           ...children,
         ],
@@ -427,13 +586,11 @@ class _OtpBox extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final FocusNode? nextFocus;
-  final bool autofocus;
 
   const _OtpBox({
     required this.controller,
     required this.focusNode,
     this.nextFocus,
-    this.autofocus = false,
   });
 
   @override
@@ -444,10 +601,13 @@ class _OtpBox extends StatelessWidget {
       child: TextField(
         controller: controller,
         focusNode: focusNode,
-        autofocus: autofocus,
+        autofocus: true,
         textAlign: TextAlign.center,
         keyboardType: TextInputType.number,
-        style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.w600),
+        style: GoogleFonts.poppins(
+          fontSize: 24,
+          fontWeight: FontWeight.w600,
+        ),
         inputFormatters: [
           LengthLimitingTextInputFormatter(1),
           FilteringTextInputFormatter.digitsOnly,
@@ -455,14 +615,22 @@ class _OtpBox extends StatelessWidget {
         decoration: InputDecoration(
           filled: true,
           fillColor: Colors.grey[50],
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF138808)),
+            borderSide: const BorderSide(
+              color: Color(0xFF138808),
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF138808), width: 2),
+            borderSide: const BorderSide(
+              color: Color(0xFF138808),
+              width: 2,
+            ),
           ),
         ),
         onChanged: (value) {
@@ -500,32 +668,46 @@ class _LoginOptionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         splashColor: color.withOpacity(0.1),
         child: Ink(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          padding: const EdgeInsets.symmetric(
+            vertical: 16,
+            horizontal: 20,
+          ),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.9),
             borderRadius: BorderRadius.circular(16),
             border: isPrimary
-                ? Border.all(color: color.withOpacity(0.3), width: 1.5)
+                ? Border.all(
+              color: color.withOpacity(0.3),
+              width: 1.5,
+            )
                 : Border.all(color: Colors.white),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.05),
                 blurRadius: 15,
                 offset: const Offset(0, 5),
-              )
+              ),
             ],
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-                child: Icon(icon, color: color, size: 24),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                  CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
@@ -535,11 +717,21 @@ class _LoginOptionCard extends StatelessWidget {
                         color: const Color(0xFF1A1A1A),
                       ),
                     ),
-                    Text(subtitle, style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600])),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey[300], size: 16),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.grey[300],
+                size: 16,
+              ),
             ],
           ),
         ),
@@ -571,9 +763,17 @@ class _PrimaryButton extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 4,
           shadowColor: color.withOpacity(0.4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
-        child: Text(text, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+        child: Text(
+          text,
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }

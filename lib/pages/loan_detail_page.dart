@@ -726,7 +726,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
         ),
         const SizedBox(height: 10),
 
-
         Builder(
           builder: (context) {
             final ts = MediaQuery.textScaleFactorOf(context).clamp(1.0, 1.25);
@@ -741,6 +740,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (context, i) {
                   final p = processes[i];
+                  print(p);
                   final selected = controller.index == i;
 
                   final title = _processTitle(p);
@@ -749,7 +749,21 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                   final thumb = urls.isNotEmpty ? urls.first : '';
 
                   const location = "Chennai Institute of Technology";
-                  const aiScore = "0";
+
+                  // 🔍 take AI score from "score"
+                  final dynamic rawScore = p['score'];
+                  String aiScore;
+
+                  if (rawScore == null) {
+                    aiScore = "1";
+                  } else if (rawScore is num) {
+                    // nice formatting: 0 → "0", 18.79 → "18.8"
+                    aiScore = rawScore.toStringAsFixed(
+                      rawScore % 1 == 0 ? 0 : 1,
+                    );
+                  } else {
+                    aiScore = rawScore.toString();
+                  }
 
                   return _StepCard(
                     index: i,
@@ -759,7 +773,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                     thumbUrl: thumb,
                     isVideo: thumb.isNotEmpty && _looksLikeVideo(thumb),
                     locationText: "Location: $location",
-                    aiScoreText: "AI Score: $aiScore",
+                    aiScoreText: "AI Score: $aiScore", // ⭐ from p['score']
                     onTap: () => controller.animateTo(i),
                   );
                 },
@@ -768,11 +782,11 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
           },
         ),
 
-
         const SizedBox(height: 6),
       ],
     );
   }
+
 
 
   // Utilization card (same as the one you liked)

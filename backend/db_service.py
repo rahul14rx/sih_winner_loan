@@ -236,15 +236,15 @@ def _build_default_processes(data):
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P2", "processid": [2], "what_to_do": "Upload Asset Side View", "data": None,
+            {"id": "P2", "processid": [1], "what_to_do": "Upload Asset Side View", "data": None,
              "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P3", "processid": [3], "what_to_do": "Upload Invoice Bill", "data": None,
+            {"id": "P3", "processid": [2], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
-            {"id": "P4", "processid": [4], "what_to_do": "Record 360 Video", "data": None,
+            {"id": "P4", "processid": [0], "what_to_do": "Record 360 Video", "data": None,
              "data_type": "video", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
@@ -305,7 +305,7 @@ def _build_default_processes(data):
              "location_confidence": None},
         ]
 
-    elif item_type in ["course"]:
+    elif item_type in ["courses"]:
         print(5)
         return [
             {"id": "P1", "processid": [1], "what_to_do": "Upload Course Certificate", "data": None,
