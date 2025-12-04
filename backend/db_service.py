@@ -229,7 +229,7 @@ def _build_default_processes(data):
     item_type = item_type.lower().strip()
     print(item_type, "item_type")
 
-    if item_type in ["laptop", "sewing machine"]:
+    if item_type in ["laptop", "sewing machines"]:
         print(1)
         return [
             {"id": "P1", "processid": [1], "what_to_do": "Upload Asset Front View", "data": None,
@@ -237,20 +237,20 @@ def _build_default_processes(data):
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P2", "processid": [1], "what_to_do": "Upload Asset Side View", "data": None,
-             "data_type": "movement", "score": 0, "process_status": "not verified",
-             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
-             "location_confidence": None},
-            {"id": "P3", "processid": [2], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
+            {"id": "P3", "processid": [2], "what_to_do": "Upload Invoice Bill", "data": None,
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
             {"id": "P4", "processid": [0], "what_to_do": "Record 360 Video", "data": None,
-             "data_type": "video", "score": 0, "process_status": "not verified",
+             "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
         ]
 
-    elif item_type in ["tractor", "auto rickshaws"]:
+    elif item_type in ["tractors", "auto rickshaws"]:
         print(2)
         return [
             {"id": "P1", "processid": [1], "what_to_do": "Upload Asset Front View", "data": None,
@@ -258,24 +258,24 @@ def _build_default_processes(data):
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P2", "processid": [2], "what_to_do": "Upload Asset Side View", "data": None,
-             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P3", "processid": [3], "what_to_do": "Upload Number Plate", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified",
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P4", "processid": [4], "what_to_do": "Upload Invoice Bill", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified",
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P5", "processid": [5], "what_to_do": "Record 360 Video", "data": None,
-             "data_type": "video", "score": 0, "process_status": "not verified",
+             "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
         ]
 
-    elif item_type in ["ppe kit"]:
+    elif item_type in ["ppe kits (safety gears)"]:
         print(3)
         return [
             {"id": "P1", "processid": [1], "what_to_do": "Top ordered View", "data": None,
@@ -283,7 +283,7 @@ def _build_default_processes(data):
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P2", "processid": [2], "what_to_do": "Upload Invoice Bill", "data": None,
-             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
         ]
@@ -296,16 +296,21 @@ def _build_default_processes(data):
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P2", "processid": [2], "what_to_do": "Upload Front View", "data": None,
-             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P3", "processid": [3], "what_to_do": "Upload Invoice Bill", "data": None,
-             "data_type": "movement", "score": 0, "process_status": "not verified",
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
+            {"id": "P4", "processid": [4], "what_to_do": "Record 360 Video", "data": None,
+                "data_type": "movement", "score": 0, "process_status": "not verified",
+                "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+                "location_confidence": None
+            }
         ]
 
-    elif item_type in ["courses"]:
+    elif item_type in ["course"]:
         print(5)
         return [
             {"id": "P1", "processid": [1], "what_to_do": "Upload Course Certificate", "data": None,
@@ -313,20 +318,20 @@ def _build_default_processes(data):
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P2", "processid": [2], "what_to_do": "Upload Invoice Bill", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified",
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
         ]
 
-    elif item_type in ["education loan"]:
+    elif item_type in ["education loan","admission fees","hostel fees"]:
         print(6)
         base = [
             {"id": "P1", "processid": [1], "what_to_do": "Upload Marksheet", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified",
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P2", "processid": [2], "what_to_do": "Upload Fee Receipt", "data": None,
-             "data_type": "image", "score": 0, "process_status": "not verified",
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
         ]
@@ -342,15 +347,15 @@ def _build_default_processes(data):
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
             {"id": "P2", "processid": [2], "what_to_do": "Upload Inner Construction View", "data": None,
-             "data_type": "movement", "score": 0, "process_status": "not verified",
-             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
-             "location_confidence": None},
-            {"id": "P3", "processid": [3], "what_to_do": "Upload Invoice Bill", "data": None,
              "data_type": "image", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
+            {"id": "P3", "processid": [3], "what_to_do": "Upload Invoice Bill", "data": None,
+             "data_type": "scanner", "score": 0, "process_status": "not verified",
+             "file_id": None, "is_required": True, "latitude": None, "longitude": None,
+             "location_confidence": None},
             {"id": "P4", "processid": [4], "what_to_do": "Record 360 Video", "data": None,
-             "data_type": "video", "score": 0, "process_status": "not verified",
+             "data_type": "movement", "score": 0, "process_status": "not verified",
              "file_id": None, "is_required": True, "latitude": None, "longitude": None,
              "location_confidence": None},
         ]

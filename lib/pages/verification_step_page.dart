@@ -22,6 +22,7 @@ import 'package:loan2/ai/combined_ai_gate.dart';
 import 'package:loan2/models/process_step.dart' as ps;
 import 'package:loan2/pages/movement_verification_page.dart';
 import 'package:loan2/pages/rear_camera_capture_page.dart';
+import 'package:loan2/pages/scanner.dart'; // Imported ScannerPage
 import 'package:loan2/services/api.dart';
 import 'package:loan2/services/database_helper.dart';
 import 'package:loan2/services/location_security_service.dart';
@@ -429,6 +430,8 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
             Icon(
               dt == 'video' || dt == 'movement'
                   ? Icons.videocam_outlined
+                  : dt == 'scanner'
+                  ? Icons.document_scanner_outlined // Scanner icon
                   : Icons.camera_alt_outlined,
               size: 44,
               color: Colors.grey[700],
@@ -437,6 +440,8 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
             Text(
               dt == 'video' || dt == 'movement'
                   ? "Tap to record"
+                  : dt == 'scanner'
+                  ? "Tap to scan"
                   : "Tap to capture",
               style: GoogleFonts.inter(
                 color: Colors.grey[700],
@@ -660,6 +665,25 @@ class _VerificationStepPageState extends State<VerificationStepPage> {
               loanId: widget.loanId,
               userId: widget.userId,
               step: widget.step,
+            ),
+          ),
+        );
+
+        if (result is String && result.isNotEmpty) {
+          setState(() => _mediaFile = File(result));
+        }
+        return;
+      }
+
+      if (dt == 'scanner') {
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ScannerPage(
+              loanId: widget.loanId,
+              processId: widget.step.id,
+              userId: widget.userId,
+              title: widget.step.whatToDo ?? "Scan Document",
             ),
           ),
         );

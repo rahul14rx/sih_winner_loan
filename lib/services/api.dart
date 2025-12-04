@@ -1,11 +1,13 @@
 // lib/services/api.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as path;
 
-// Change this to your Flask host
-const String kBaseUrl = 'http://192.168.1.7:5000/';
+// Change this to your Flask host - REMOVED trailing slash to prevent double slashes
+const String kBaseUrl = 'http://192.168.1.10:5000/';
 
 final Connectivity _connectivity = Connectivity();
 
@@ -46,11 +48,9 @@ Future<Map<String, dynamic>> postJson(
       if (resp.body.isEmpty) return <String, dynamic>{};
       return jsonDecode(resp.body) as Map<String, dynamic>;
     } else {
-      // Server returned an error, return empty map to avoid UI exception
       return <String, dynamic>{};
     }
   } catch(e) {
-    // Connection failed, return empty map to avoid UI exception
     return <String, dynamic>{};
   }
 }
@@ -74,22 +74,101 @@ Future<Map<String, dynamic>> getJson(
       if (resp.body.isEmpty) return <String, dynamic>{};
       return jsonDecode(resp.body) as Map<String, dynamic>;
     } else {
-      // Server returned an error, return empty map to avoid UI exception
       return <String, dynamic>{};
     }
   } catch(e) {
-    // Connection failed, return empty map to avoid UI exception
     return <String, dynamic>{};
   }
 }
 
 Future<Map<String, dynamic>> login_user(String officerId, String password) async {
   return await postJson(
-    'login',
+    '/login',
     body: {
       'login_id': officerId,
       'password': password,
       'role': 'officer',
     },
   );
+}
+
+Future<bool> uploadProcessMedia({
+  required String loanId,
+  required String processId,
+  required String userId,
+  required File file,
+  String? latitude,
+  String? longitude,
+}) async {
+  await _checkConnectivity();
+  final uri = Uri.parse('$kBaseUrl/update_process_media');
+
+  final request = http.MultipartRequest('POST', uri);
+  request.fields['loan_id'] = loanId;
+  request.fields['process_id'] = processId;
+  request.fields['user_id'] = userId;
+  if (latitude != null) request.fields['latitude'] = latitude;
+  if (longitude != null) request.fields['longitude'] = longitude;
+
+  final stream = http.ByteStream(file.openRead());
+  final length = await file.length();
+
+  final multipartFile = http.MultipartFile(
+    'file',
+    stream,
+    length,
+    filename: path.basename(file.path),
+  );
+
+  request.files.add(multipartFile);
+
+  try {
+    final response = await request.send();
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return true;
+    } else {
+      return false;
+    }
+  } catch (e) {
+    return false;
+  }
+}
+
+// Added function to create a new beneficiary
+Future<bool> createBeneficiary({
+  required Map<String, String> data,
+  File? loanAgreementFile,
+}) async {
+  await _checkConnectivity();
+  final uri = Uri.parse('$kBaseUrl/create_beneficiary');
+
+  final request = http.MultipartRequest('POST', uri);
+
+  // Add all text fields from the data map
+  request.fields.addAll(data);
+
+  // Add the file if it exists
+  if (loanAgreementFile != null) {
+    final stream = http.ByteStream(loanAgreementFile.openRead());
+    final length = await loanAgreementFile.length();
+    final multipartFile = http.MultipartFile(
+      'loan_agreement', // Key must match the backend expectation
+      stream,
+      length,
+      filename: path.basename(loanAgreementFile.path),
+    );
+    request.files.add(multipartFile);
+  }
+
+  try {
+    final response = await request.send();
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return true;
+    } else {
+      return false;
+    }
+  } catch (e) {
+    print('Error in createBeneficiary: $e');
+    return false;
+  }
 }
