@@ -6,7 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
   static const _dbName = 'loan_app.db';
-  static const _dbVersion = 9;
+  static const _dbVersion = 10;
 
   static const tableImages = 'images';
   static const tableBeneficiaries = 'pending_beneficiaries';
@@ -36,6 +36,7 @@ class DatabaseHelper {
   static const colDocPath = 'doc_path';
   static const colAddress = 'address';
   static const colAsset = 'asset';
+  static const colCreationId = 'creation_id';
 
   // columns for officer actions
   static const colActionType = 'action_type';
@@ -89,7 +90,8 @@ class DatabaseHelper {
         $colCreatedAt INTEGER,
         $colAddress TEXT,
         $colAsset TEXT,
-        $colExtraJson TEXT
+        $colExtraJson TEXT,
+        $colCreationId TEXT
       )
     ''');
 
@@ -117,13 +119,13 @@ class DatabaseHelper {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colSubmitted INTEGER DEFAULT 0');
+      await _addColumnIfMissing(db, tableImages, colSubmitted, 'INTEGER DEFAULT 0');
     }
     if (oldVersion < 3) {
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colLoanId TEXT');
+      await _addColumnIfMissing(db, tableImages, colLoanId, 'TEXT');
     }
     if (oldVersion < 4) {
-      await db.execute('ALTER TABLE $tableImages ADD COLUMN $colProcessIntId INTEGER');
+      await _addColumnIfMissing(db, tableImages, colProcessIntId, 'INTEGER');
     }
     if (oldVersion < 5) {
       await db.execute('''
@@ -153,16 +155,19 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 7) {
-      await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAddress TEXT');
-      await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colAsset TEXT');
+      await _addColumnIfMissing(db, tableBeneficiaries, colAddress, 'TEXT');
+      await _addColumnIfMissing(db, tableBeneficiaries, colAsset, 'TEXT');
     }
     if (oldVersion < 8) {
-      await db.execute('ALTER TABLE $tableBeneficiaries ADD COLUMN $colExtraJson TEXT');
+      await _addColumnIfMissing(db, tableBeneficiaries, colExtraJson, 'TEXT');
     }
     if (oldVersion < 9) {
       await _addColumnIfMissing(db, tableImages, colLatitude, 'TEXT');
       await _addColumnIfMissing(db, tableImages, colLongitude, 'TEXT');
       await _addColumnIfMissing(db, tableImages, colLocationConfidence, 'TEXT');
+    }
+    if (oldVersion < 10) {
+      await _addColumnIfMissing(db, tableBeneficiaries, colCreationId, 'TEXT');
     }
   }
 
@@ -271,6 +276,7 @@ class DatabaseHelper {
     required String loanId,
     required String scheme,
     required String loanType,
+    required String creationId,
     String? docPath,
     String? address,
     String? asset,  String? extraJson,
@@ -287,6 +293,7 @@ class DatabaseHelper {
       colDocPath: docPath,
       colAddress: address,
       colAsset: asset,
+      colCreationId: creationId,
       colCreatedAt: DateTime.now().millisecondsSinceEpoch,colExtraJson: extraJson,
 
     };

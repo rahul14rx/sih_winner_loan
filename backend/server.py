@@ -257,6 +257,10 @@ def create_new():
         missing = [k for k in required if k not in data or not str(data[k]).strip()]
         return jsonify({"error": "Missing required fields", "missing": missing}), 400
 
+    creation_id = data.get("creation_id")
+    if creation_id and db_service.beneficiary_exists_by_creation_id(creation_id):
+        return jsonify({"error": "Duplicate beneficiary"}), 409
+
     loan_agreement_file = request.files.get("loan_agreement")
     if not loan_agreement_file:
         return jsonify({"error": "Missing 'loan_agreement' file"}), 400

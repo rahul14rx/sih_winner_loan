@@ -11,6 +11,7 @@ import 'package:loan2/services/sync_service.dart';
 import 'package:loan2/widgets/officer_nav_bar.dart';
 import 'package:loan2/pages/bank_dashboard_page.dart';
 import 'package:loan2/services/theme_ext.dart';
+import 'package:uuid/uuid.dart';
 
 class CreateBeneficiaryPage extends StatefulWidget {
   final String officerId;
@@ -422,6 +423,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     }
 
     final docPath = _loanAgreementFile?.path;
+    final creationId = const Uuid().v4();
 
     try {
       final isOnline = await SyncService.realInternetCheck();
@@ -435,6 +437,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         request.fields['loan_id'] = loanId;
         request.fields['scheme'] = scheme;
         request.fields['loan_type'] = loanTypeFinal;
+        request.fields['creation_id'] = creationId;
 
         request.fields['beneficiary_address'] = address;
         request.fields['asset_purchased'] = asset;
@@ -468,6 +471,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
           loanId: loanId,
           scheme: scheme,
           loanType: loanTypeFinal,
+          creationId: creationId,
           docPath: docPath,
           address: address,
           asset: asset,
@@ -485,6 +489,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
         loanId: loanId,
         scheme: scheme,
         loanType: loanTypeFinal,
+        creationId: creationId,
         docPath: docPath,
         address: address,
         asset: asset,
@@ -504,6 +509,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     required String loanId,
     required String scheme,
     required String loanType,
+    required String creationId,
     String? docPath,
     String? address,
     String? asset,
@@ -517,6 +523,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       loanId: loanId,
       scheme: scheme,
       loanType: loanType,
+      creationId: creationId,
       docPath: docPath,
       address: address,
       asset: asset,

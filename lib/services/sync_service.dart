@@ -136,6 +136,7 @@ class SyncService {
       final docPath = row[DatabaseHelper.colDocPath] as String?;
       final address = row[DatabaseHelper.colAddress] as String?;
       final asset = row[DatabaseHelper.colAsset] as String?;
+      final creationId = row[DatabaseHelper.colCreationId] as String?;
 
       // ✅ NEW: dynamic fields bundle (JSON)
       final extraJson = row[DatabaseHelper.colExtraJson] as String?;
@@ -159,6 +160,7 @@ class SyncService {
       request.fields['loan_id'] = loanId;
       request.fields['scheme'] = scheme ?? "";
       request.fields['loan_type'] = loanType ?? "";
+      if (creationId != null) request.fields['creation_id'] = creationId;
 
       // keep old fields so current backend still accepts it
       request.fields['beneficiary_address'] = address ?? "";
@@ -186,6 +188,15 @@ class SyncService {
         if (response.statusCode == 201) {
           await DatabaseHelper.instance.deletePendingBeneficiary(dbId);
           wasSynced = true;
+        } else {
+           final respStr = await response.stream.bytesToString();
+          // Handle conflict (duplicate)
+          if (response.statusCode == 409) {
+            print("🗑️ Beneficiary already exists on server. Deleting local copy.");
+            await DatabaseHelper.instance.deletePendingBeneficiary(dbId);
+          } else {
+            print("❌ Server Error syncing beneficiary: ${response.statusCode} - $respStr");
+          }
         }
       } catch (e) {
         print("❌ Network Error syncing beneficiary: $e");

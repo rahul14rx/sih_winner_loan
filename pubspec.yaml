@@ -24,6 +24,7 @@ dependencies:
   path: ^1.9.0
   image_picker: ^1.1.1
   connectivity_plus: ^7.0.0
+  uuid: ^4.4.0
   
   # Dependencies for Encryption
   encrypt: ^5.0.3
