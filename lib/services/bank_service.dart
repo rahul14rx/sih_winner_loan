@@ -5,15 +5,14 @@
 // - Safe JSON parsing
 // - Consistent return shapes
 // - Zero breaking changes
+// - ✅ Added sendOfficerNotice() to match LoanDetailPage
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+
 import 'package:loan2/services/api.dart';
 import 'package:loan2/models/loan_application.dart';
-import 'package:loan2/services//beneficiary_service.dart';
-import 'dart:async';
-
-
 
 class BankService {
   // -------------------------------
@@ -21,15 +20,12 @@ class BankService {
   // -------------------------------
   Future<Map<String, int>> fetchDashboardStats(String officerId) async {
     try {
-
-
       final response = await http.get(
         Uri.parse('${kBaseUrl}bank/stats?officer_id=$officerId'),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) ?? {};
-
         return {
           'pending': data['pending'] ?? 0,
           'verified': data['verified'] ?? 0,
@@ -48,7 +44,6 @@ class BankService {
   // -------------------------------
   Future<List<LoanApplication>> fetchPendingLoans(String officerId) async {
     try {
-
       final res = await http.get(
         Uri.parse('${kBaseUrl}bank/loans?status=pending&officer_id=$officerId'),
       );
@@ -60,9 +55,7 @@ class BankService {
       final decoded = jsonDecode(res.body);
 
       final List<dynamic> list =
-      (decoded is Map && decoded['data'] is List)
-          ? decoded['data']
-          : <dynamic>[];
+      (decoded is Map && decoded['data'] is List) ? decoded['data'] : <dynamic>[];
 
       return list.map((e) => LoanApplication.fromJson(e)).toList();
     } catch (e) {
@@ -77,7 +70,6 @@ class BankService {
       Map<String, String> data, {
         String? docPath,
       }) async {
-
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('${kBaseUrl}bank/beneficiary'),
@@ -85,8 +77,7 @@ class BankService {
     request.fields.addAll(data);
 
     if (docPath != null && docPath.isNotEmpty) {
-      request.files
-          .add(await http.MultipartFile.fromPath('loan_document', docPath));
+      request.files.add(await http.MultipartFile.fromPath('loan_document', docPath));
     }
 
     try {
@@ -143,5 +134,48 @@ class BankService {
         "name": "Bank Officer",
       }
     };
+  }
+
+  // -------------------------------
+  // ✅ SEND NOTICE (used by LoanDetailPage)
+  // Matches your Flask route: POST /bank/notice/send
+  // Expects: loan_id, message, notice_days; officer_id comes from query/header
+  // -------------------------------
+  Future<bool> sendOfficerNotice({
+    required String officerId,
+    required String loanId,
+    required String title,
+    required String message,
+    required DateTime dueAt,
+    String noticeType = "info",
+  }) async {
+    try {
+      // convert dueAt -> notice_days (backend expects int days)
+      final diff = dueAt.difference(DateTime.now());
+      int days = (diff.inHours / 24).ceil();
+      if (days < 1) days = 1;
+
+      final uri = Uri.parse('${kBaseUrl}bank/notice/send')
+          .replace(queryParameters: {'officer_id': officerId});
+
+      final resp = await http
+          .post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'loan_id': loanId,
+          'message': message,
+          'notice_days': days,
+          // extras (backend can ignore)
+          'title': title,
+          'notice_type': noticeType,
+        }),
+      )
+          .timeout(const Duration(seconds: 15));
+
+      return resp.statusCode >= 200 && resp.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
   }
 }

@@ -33,6 +33,10 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
   final _addressController = TextEditingController();
   final _assetController = TextEditingController(); // auto-computed
 
+  // ✅ Due date (NO TIME)
+
+
+
   // ✅ Dynamic extra fields controllers
   final Map<String, TextEditingController> _extraControllers = {};
   String? _courseMode; // Online / Offline
@@ -165,6 +169,44 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     return (v == null || v.trim().isEmpty) ? "Required" : null;
   }
 
+  // ✅ Verification Due Date (DATE ONLY, starts empty)
+  DateTime? _dueDate; // null until user selects
+  final TextEditingController _dueDateController = TextEditingController();
+
+  String _two(int n) => n.toString().padLeft(2, '0');
+
+  String _formatDueDate(DateTime dt) {
+    return "${_two(dt.day)}-${_two(dt.month)}-${dt.year}";
+  }
+
+  Future<void> _pickDueDate() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // ✅ must be NON-null DateTime for showDatePicker
+    final DateTime initialDate =
+    (_dueDate != null && !_dueDate!.isBefore(today))
+        ? _dueDate!
+        : today.add(const Duration(days: 7));
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+    );
+
+    if (pickedDate == null) return;
+
+    setState(() {
+      _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day);
+      _dueDateController.text = _formatDueDate(_dueDate!);
+    });
+  }
+
+
+
+
   bool _hasLetter(String s) => RegExp(r'[A-Za-z]').hasMatch(s);
 
   void _clearDynamicExtras() {
@@ -204,7 +246,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       if (cp.isNotEmpty) extra["course_provider_name"] = cp;
       if ((_courseMode ?? '').trim().isNotEmpty) extra["course_mode"] = _courseMode!.trim();
 
-      // ✅ Institution only if Offline (your requirement)
+      // Institution only if Offline
       if (_courseMode == "Offline") {
         final inst = _extraCtrl("institution_name").text.trim();
         if (inst.isNotEmpty) extra["institution_name"] = inst;
@@ -226,10 +268,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
 
     if (_needsBrandModel) {
       final bm = (extra["brand_model"] ?? "").trim();
-
-      // ✅ Fix: ignore pure numbers like "8"
       if (bm.isEmpty || !_hasLetter(bm)) return base;
-
       return "$base - $bm";
     }
 
@@ -314,7 +353,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
           controller: _extraCtrl("course_provider_name"),
           label: "Course Provider Name",
           icon: Icons.business_outlined,
-          validator: (v) => (v == null || v.trim().isEmpty) ? "Required" : null,
+          validator: (v) => (v == null || v.trim().isNotEmpty) ? null : "Required",
           onChanged: (_) => _syncAssetController(),
         ),
         SizedBox(height: gap),
@@ -324,13 +363,11 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
           items: const ["Online", "Offline"],
           onChanged: (v) => setState(() {
             _courseMode = v;
-            // if switched to Online, clear institution name
             if (_courseMode == "Online") _extraCtrl("institution_name").clear();
             _syncAssetController();
           }),
           icon: Icons.wifi_tethering_outlined,
         ),
-        // ✅ Institution only when OFFLINE (your requirement)
         if (_courseMode == "Offline") ...[
           SizedBox(height: gap),
           _buildTextField(
@@ -360,6 +397,16 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     return widgets;
   }
 
+
+  @override
+  void initState() {
+    super.initState();
+    _dueDate = null;
+    _dueDateController.text = "";
+  }
+
+
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -368,6 +415,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     _loanIdController.dispose();
     _addressController.dispose();
     _assetController.dispose();
+    _dueDateController.dispose();
 
     for (final c in _extraControllers.values) {
       c.dispose();
@@ -376,33 +424,49 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     super.dispose();
   }
 
-  Future<void> _pickLoanAgreement() async {
-    try {
-      final picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-      if (image != null) {
-        setState(() => _loanAgreementFile = File(image.path));
-      }
-    } catch (e) {
-      debugPrint("Error picking file: $e");
-    }
-  }
-
   Future<void> _submitForm() async {
     _syncAssetController();
 
     if (!_formKey.currentState!.validate()) return;
 
-    if (_loanAgreementFile == null) {
+    if (_dueDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please attach the loan agreement file."), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text("Please select verification due date."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final file = _loanAgreementFile;
+    if (file == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please attach the loan agreement file."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final exists = await file.exists();
+    if (!exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Selected agreement file not found. Please pick again."),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
     setState(() => _isLoading = true);
 
-    final name = _nameController.text.trim();
+
+
+
+  final name = _nameController.text.trim();
     final phone = _phoneController.text.trim();
     final amount = _amountController.text.trim();
     final loanId = _loanIdController.text.trim();
@@ -414,56 +478,40 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     String address = _addressController.text.trim();
 
     final extra = _collectExtraFields();
-    final asset = _assetController.text.trim().isEmpty ? _computeAssetPurchased(extra) : _assetController.text.trim();
-    final extraJson = jsonEncode(extra);
+    final asset = _assetController.text.trim().isEmpty
+        ? _computeAssetPurchased(extra)
+        : _assetController.text.trim();
 
-    // Course online: server still requires beneficiary_address -> send placeholder
+    // ✅ send date-only due as ISO (midnight)
+    if (_dueDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please select verification due date."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final timePeriod = _dueDate!.toIso8601String();
+
+
+
+    // ✅ store time_period inside extraJson for offline too
+    final extraJson = jsonEncode({...extra, "time_period": timePeriod});
+
+    // Course online: backend still expects address -> send placeholder
     if (_isCourse && _courseMode == "Online" && address.isEmpty) {
       address = "Online";
     }
 
-    final docPath = _loanAgreementFile?.path;
     final creationId = const Uuid().v4();
 
     try {
       final isOnline = await SyncService.realInternetCheck();
 
-      if (isOnline) {
-        final request = http.MultipartRequest('POST', Uri.parse('${kBaseUrl}bank/beneficiary'));
-        request.fields['officer_id'] = widget.officerId;
-        request.fields['name'] = name;
-        request.fields['phone'] = phone;
-        request.fields['amount'] = amount;
-        request.fields['loan_id'] = loanId;
-        request.fields['scheme'] = scheme;
-        request.fields['loan_type'] = loanTypeFinal;
-        request.fields['creation_id'] = creationId;
-
-        request.fields['beneficiary_address'] = address;
-        request.fields['asset_purchased'] = asset;
-
-        // send extra fields individually
-        extra.forEach((k, v) {
-          if (v.trim().isNotEmpty) request.fields[k] = v.trim();
-        });
-
-        if (docPath != null) {
-          request.files.add(await http.MultipartFile.fromPath('loan_agreement', docPath));
-        }
-
-        if (_showFloorsDropdown && _selectedFloors != null) {
-          request.fields['floors'] = _selectedFloors!;
-        }
-
-        final response = await request.send();
-        final respStr = await response.stream.bytesToString();
-
-        if (response.statusCode == 201) {
-          if (mounted) _showSuccessDialog(isOffline: false);
-        } else {
-          throw Exception("Server Error: ${response.statusCode} - $respStr");
-        }
-      } else {
+      // ✅ OFFLINE => save offline
+      if (!isOnline) {
         await _saveOffline(
           name: name,
           phone: phone,
@@ -472,31 +520,83 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
           scheme: scheme,
           loanType: loanTypeFinal,
           creationId: creationId,
-          docPath: docPath,
+          docPath: file.path,
           address: address,
           asset: asset,
           extraJson: extraJson,
         );
 
         if (mounted) _showSuccessDialog(isOffline: true);
+        return;
       }
-    } catch (e) {
-      debugPrint("API Error, saving offline: $e");
-      await _saveOffline(
-        name: name,
-        phone: phone,
-        amount: amount,
-        loanId: loanId,
-        scheme: scheme,
-        loanType: loanTypeFinal,
-        creationId: creationId,
-        docPath: docPath,
-        address: address,
-        asset: asset,
-        extraJson: extraJson,
+
+      // ✅ ONLINE => send multipart WITH FILE
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${kBaseUrl}bank/beneficiary'),
       );
 
-      if (mounted) _showSuccessDialog(isOffline: true, error: e.toString());
+      request.fields.addAll({
+        'officer_id': widget.officerId,
+        'name': name,
+        'phone': phone,
+        'amount': amount,
+        'loan_id': loanId,
+        'scheme': scheme,
+        'loan_type': loanTypeFinal,
+        'creation_id': creationId,
+        'beneficiary_address': address,
+        'asset_purchased': asset,
+        'time_period': timePeriod, // ✅ REQUIRED by your backend
+      });
+
+      // extra fields (loan_category / loan_purpose / brand_model / no_of_cows etc)
+      extra.forEach((k, v) {
+        final vv = v.trim();
+        if (vv.isNotEmpty) request.fields[k] = vv;
+      });
+
+      // ✅ IMPORTANT: backend expects this key
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'loan_agreement',
+          file.path,
+        ),
+      );
+
+      final response = await request.send();
+      final respStr = await response.stream.bytesToString();
+
+      if (response.statusCode == 201) {
+        if (mounted) _showSuccessDialog(isOffline: false);
+        return;
+      }
+
+      String serverMsg = respStr;
+      try {
+        final decoded = jsonDecode(respStr);
+        if (decoded is Map) {
+          serverMsg = (decoded['error'] ?? decoded['message'] ?? respStr).toString();
+        }
+      } catch (_) {}
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Create failed (${response.statusCode}): $serverMsg"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      debugPrint("CreateBeneficiary error: $e");
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Create failed: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -673,6 +773,19 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                         inputType: TextInputType.number,
                         validator: (v) => v!.isEmpty ? "Required" : null,
                       ),
+
+                      // ✅ Due date only (NO TIME)
+                      SizedBox(height: gap),
+                      _buildTextField(
+                        controller: _dueDateController,
+                        label: "Verification Due Date",
+                        icon: Icons.event_available_outlined,
+                        readOnly: true,
+                        onTap: _pickDueDate,
+                        validator: (v) => (v == null || v.trim().isEmpty) ? "Required" : null,
+                      ),
+
+
                       SizedBox(height: gap),
                       _buildDropdown(
                         label: "Government Scheme",
@@ -736,7 +849,6 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                     ]),
                     SizedBox(height: pad),
 
-                    // ✅ Hide Asset section until filter applied
                     if (_isFilterApplied) ...[
                       _buildSectionHeader("Asset & Agreement Details", isDark),
                       _buildCard(isDark, [
@@ -747,7 +859,6 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
                           validator: _addressValidator,
                         ),
 
-                        // ✅ THIS is what makes Number of Cows / Brand&Model / Course fields appear
                         ..._buildDynamicFields(gap),
 
                         SizedBox(height: gap),
@@ -878,6 +989,7 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
     String? Function(String?)? validator,
     bool readOnly = false,
     ValueChanged<String>? onChanged,
+    VoidCallback? onTap,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -886,14 +998,17 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       keyboardType: inputType,
       inputFormatters: formatters,
       validator: validator,
-      readOnly: readOnly,
+      readOnly: readOnly || onTap != null,
       onChanged: onChanged,
+      onTap: onTap,
       style: GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w600,
         color: isDark ? Colors.white : null,
       ),
-      decoration: _compactDecoration(label, icon),
+      decoration: _compactDecoration(label, icon).copyWith(
+        suffixIcon: onTap != null ? const Icon(Icons.calendar_month_rounded, size: 20) : null,
+      ),
     );
   }
 
@@ -940,6 +1055,17 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
       ),
     );
   }
+  Future<void> _pickLoanAgreement() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+
+      setState(() => _loanAgreementFile = File(image.path));
+    } catch (e) {
+      debugPrint("Error picking file: $e");
+    }
+  }
 
   Widget _buildUploadCard(bool isDark) {
     final border = context.appBorder;
@@ -963,7 +1089,9 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _loanAgreementFile != null ? Colors.green.withOpacity(0.1) : _accent.withOpacity(0.12),
+                color: _loanAgreementFile != null
+                    ? Colors.green.withOpacity(0.1)
+                    : _accent.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -982,7 +1110,9 @@ class _CreateBeneficiaryPageState extends State<CreateBeneficiaryPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              _loanAgreementFile != null ? _loanAgreementFile!.path.split('/').last : "PDF or Image (Max 5MB)",
+              _loanAgreementFile != null
+                  ? _loanAgreementFile!.path.split('/').last
+                  : "PDF or Image (Max 5MB)",
               style: GoogleFonts.inter(
                 fontSize: 12,
                 color: isDark ? const Color(0xFF94A3B8) : Colors.grey[500],

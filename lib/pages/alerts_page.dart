@@ -46,7 +46,7 @@ class _AlertsPageState extends State<AlertsPage> {
     try {
       setState(() => _loading = true);
 
-      final url = Uri.parse("http://10.156.77.23:5001/user?id=${widget.userId}");
+      final url = Uri.parse("http://172.20.10.11:5000/user?id=${widget.userId}");
       final res = await http.get(url);
 
       if (res.statusCode != 200) {

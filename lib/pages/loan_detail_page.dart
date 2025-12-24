@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:loan2/services/bank_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -13,21 +14,216 @@ import 'package:loan2/services/sync_service.dart';
 
 class LoanDetailPage extends StatefulWidget {
   final String loanId;
-  const LoanDetailPage({super.key, required this.loanId});
+  final String? officerId;
+
+  const LoanDetailPage({super.key, required this.loanId, this.officerId});
 
   @override
   State<LoanDetailPage> createState() => _LoanDetailPageState();
 }
 
 class _LoanDetailPageState extends State<LoanDetailPage> {
+  String _two(int n) => n.toString().padLeft(2, '0');
+  DateTime? _parseDateTimeAny(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v.toLocal();
+
+    final s = v.toString().trim();
+    if (s.isEmpty) return null;
+
+    // "YYYY-MM-DD" (date only)
+    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(s)) {
+      final dt = DateTime.tryParse(s);
+      return dt?.toLocal();
+    }
+
+    // ISO datetime or anything DateTime can parse
+    final dt = DateTime.tryParse(s);
+    return dt?.toLocal();
+  }
+
+  bool get _isLoanDueExpired {
+    final dueAt = _parseDateTimeAny(_details?['time_period']);
+    if (dueAt == null) return false;
+    return DateTime.now().isAfter(dueAt);
+  }
+
+  Map<String, dynamic> get _noticeMap {
+    final n = _details?['notice'];
+    if (n is Map) return Map<String, dynamic>.from(n);
+    return {};
+  }
+
+  String get _noticeStatus {
+    final s = (_noticeMap['status'] ?? 'none').toString().toLowerCase().trim();
+    return s.isEmpty ? 'none' : s;
+  }
+
+  Future<void> _sendNoticeQuick() async {
+    final online = await SyncService.realInternetCheck();
+    if (!online) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Offline: cannot send notice right now."), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    final officerId = _resolveOfficerId();
+    if (officerId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Officer id missing"), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    // ✅ simple default notice payload (no UI)
+    final dueAt = DateTime.now().add(const Duration(hours: 24));
+    final ok = await _bank.sendOfficerNotice(
+      officerId: officerId,
+      loanId: widget.loanId,
+      title: "Notice",
+      message: "Please respond regarding the loan verification for Loan ID: ${widget.loanId}.",
+      dueAt: dueAt,
+      noticeType: "info",
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? "Notice sent ✅" : "Failed to send notice ❌"),
+        backgroundColor: ok ? Colors.green : Colors.red,
+      ),
+    );
+
+    if (ok) {
+      await _fetchDetails(); // refresh state from backend
+    }
+  }
+
+  Widget _buildNoticeCardBetween() {
+    final expired = _isLoanDueExpired;
+    final nStatus = _noticeStatus;
+
+    // ✅ Before due time: show NOTHING (as you asked)
+    final hasActiveNotice = nStatus != 'none';
+    if (!expired && !hasActiveNotice) return const SizedBox.shrink();
+
+    final canSend = expired && (nStatus == 'none' || nStatus == 'expired' || nStatus == 'resolved');
+
+    String title;
+    String subtitle;
+
+    if (nStatus == 'responded') {
+      title = "Received a response ✅";
+      subtitle = "Tap to view beneficiary reply.";
+    } else if (nStatus == 'sent') {
+      title = "Notice sent";
+      subtitle = "Waiting for beneficiary response.";
+    } else if (canSend) {
+      title = "Time due. Send Notice";
+      subtitle = "Due time is over. Send a notice to beneficiary.";
+    } else {
+      title = "Notice";
+      subtitle = "Tap to view details.";
+    }
+
+    return Card(
+      elevation: 2,
+      shadowColor: Colors.black.withOpacity(0.06),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () {
+          // OPTIONAL: open notice details page later
+          // Navigator.push(context, MaterialPageRoute(builder: (_) => NoticeListPage(officerId: _resolveOfficerId())));
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _brandBlue.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.campaign_outlined, color: _brandBlue),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 12)),
+                  ],
+                ),
+              ),
+              if (canSend)
+                ElevatedButton(
+                  onPressed: _sendNoticeQuick,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[600],
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  ),
+                  child: const Text("Send", style: TextStyle(fontWeight: FontWeight.w900)),
+                )
+              else
+                TextButton(
+                  onPressed: () {
+                    // OPTIONAL: open notice details page
+                    // Navigator.push(context, MaterialPageRoute(builder: (_) => NoticeListPage(officerId: _resolveOfficerId())));
+                  },
+                  child: const Text("View"),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _resolveOfficerId() {
+    final a = (widget.officerId ?? '').trim();
+    if (a.isNotEmpty) return a;
+    final v = _details?['loan_officer_id'] ?? _details?['officer_id'];
+    return (v ?? '').toString().trim();
+  }
+
+  String _formatDateDdMmYyyy(dynamic input) {
+    if (input == null) return "N/A";
+    final s = input.toString().trim();
+    if (s.isEmpty) return "N/A";
+
+    final dt = DateTime.tryParse(s);
+    if (dt != null) {
+      return "${_two(dt.day)} - ${_two(dt.month)} - ${dt.year}";
+    }
+
+    final m = RegExp(r'^(\d{1,2})\D+(\d{1,2})\D+(\d{4})$').firstMatch(s);
+    if (m != null) {
+      final d = int.parse(m.group(1)!);
+      final mo = int.parse(m.group(2)!);
+      final y = m.group(3)!;
+      return "${_two(d)} - ${_two(mo)} - $y";
+    }
+
+    return s;
+  }
+
   Map<String, dynamic>? _details;
   bool _loading = true;
   String _error = '';
   bool _isOnline = true;
+  final BankService _bank = BankService();
 
   bool _verificationTriggered = false;
 
-  // UI-only state
   bool _bulkUpdating = false;
   final Map<String, int> _carouselIndexByProcess = {};
 
@@ -38,6 +234,146 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     super.initState();
     _checkOnline();
     _fetchDetails();
+  }
+
+  Future<void> _openSendNoticeSheet() async {
+    final titleCtrl = TextEditingController(text: "Notice");
+    final msgCtrl = TextEditingController();
+    int hours = 24; // default due time
+
+    String officerId = (widget.officerId ?? '').trim();
+    if (officerId.isEmpty) {
+      final v = _details?['loan_officer_id'] ?? _details?['officer_id'];
+      officerId = (v ?? '').toString().trim();
+    }
+
+    if (officerId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Officer id missing. Can't send notice."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 16 + bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 6,
+                    width: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text("Send Notice",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: titleCtrl,
+                    decoration: const InputDecoration(labelText: "Title"),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: msgCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: "Message"),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Text("Due in:", style: TextStyle(fontWeight: FontWeight.w800)),
+                      const SizedBox(width: 10),
+                      ChoiceChip(
+                        label: const Text("24h"),
+                        selected: hours == 24,
+                        onSelected: (_) => setSheet(() => hours = 24),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text("48h"),
+                        selected: hours == 48,
+                        onSelected: (_) => setSheet(() => hours = 48),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text("7d"),
+                        selected: hours == 168,
+                        onSelected: (_) => setSheet(() => hours = 168),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final msg = msgCtrl.text.trim();
+                        final title = titleCtrl.text.trim();
+
+                        if (msg.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Message required"),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+
+                        final dueAt = DateTime.now().add(Duration(hours: hours));
+
+                        final ok = await _bank.sendOfficerNotice(
+                          officerId: officerId,
+                          loanId: widget.loanId,
+                          title: title,
+                          message: msg,
+                          dueAt: dueAt,
+                          noticeType: "info",
+                        );
+
+                        if (!mounted) return;
+                        Navigator.pop(ctx);
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok ? "Notice sent ✅" : "Failed to send notice ❌"),
+                            backgroundColor: ok ? Colors.green : Colors.red,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.send_rounded),
+                      label: const Text("Send"),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    titleCtrl.dispose();
+    msgCtrl.dispose();
   }
 
   Future<void> _checkOnline() async {
@@ -137,7 +473,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     }
   }
 
-  // existing backend call (unchanged)
   Future<void> _verifyProcess(String processId, String status) async {
     _verificationTriggered = true;
 
@@ -201,7 +536,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     }
   }
 
-  // ✅ one approve/reject/retake across all steps (still uses SAME endpoint per step)
   Future<void> _verifyAllProcesses(String status) async {
     if (_bulkUpdating) return;
 
@@ -300,8 +634,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     }
   }
 
-  // ----------------- Dynamic extra rendering (unchanged) -----------------
-
   Map<String, dynamic> _extraMap() {
     final raw = _details?['beneficiary_extra'];
     if (raw is Map) return Map<String, dynamic>.from(raw);
@@ -336,7 +668,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
 
   List<Widget> _buildDynamicExtraRows() {
     final extra = _extraMap();
-
     extra.removeWhere((k, v) => v == null || v.toString().trim().isEmpty);
 
     const alreadyShown = {
@@ -385,8 +716,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
       return _buildDetailRow(_prettyLabel(k), v, wrapValue: true);
     }).toList();
   }
-
-  // ----------------- UI helpers -----------------
 
   double _num(dynamic v) {
     if (v == null) return 0.0;
@@ -442,7 +771,10 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
   }
 
   String _processTitle(Map<String, dynamic> p) {
-    final t = (p['label'] ?? p['title'] ?? p['what_to_do'] ?? p['name'] ?? 'Step').toString().trim();
+    final t =
+    (p['label'] ?? p['title'] ?? p['what_to_do'] ?? p['name'] ?? 'Step')
+        .toString()
+        .trim();
     return t.isEmpty ? 'Step' : t;
   }
 
@@ -481,7 +813,11 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
 
   bool _looksLikeVideo(String url) {
     final u = url.toLowerCase();
-    return u.endsWith('.mp4') || u.endsWith('.mov') || u.endsWith('.mkv') || u.endsWith('.webm') || u.contains('video');
+    return u.endsWith('.mp4') ||
+        u.endsWith('.mov') ||
+        u.endsWith('.mkv') ||
+        u.endsWith('.webm') ||
+        u.contains('video');
   }
 
   Future<void> _openExternal(String url) async {
@@ -502,8 +838,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     }
   }
 
-  // ----------------- Build -----------------
-
   @override
   Widget build(BuildContext context) {
     final processes = _details == null ? const <Map<String, dynamic>>[] : _processes();
@@ -513,7 +847,11 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
       appBar: AppBar(
         title: const Text(
           "Verification Page",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+          ),
         ),
         backgroundColor: _brandBlue,
         foregroundColor: Colors.white,
@@ -542,6 +880,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
           ),
         ],
       ),
+
       body: _buildBody(),
       bottomNavigationBar: (_loading || _error.isNotEmpty || _details == null || processes.isEmpty)
           ? null
@@ -549,7 +888,13 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 14, offset: const Offset(0, -6))],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 14,
+                offset: const Offset(0, -6),
+              )
+            ],
           ),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: Row(
@@ -558,7 +903,11 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                 child: ElevatedButton.icon(
                   onPressed: _bulkUpdating ? null : () => _verifyAllProcesses('verified'),
                   icon: _bulkUpdating
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
                       : const Icon(Icons.check_circle_outline, size: 18),
                   label: const Text("Approve"),
                   style: ElevatedButton.styleFrom(
@@ -638,13 +987,16 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
             _buildDetailsCard(),
             const SizedBox(height: 16),
             const Text("No verification steps for this loan."),
+            _buildDetailsCard(),
+            const SizedBox(height: 10),
+            _buildNoticeCardBetween(),
+            const SizedBox(height: 16),
+
           ],
         ),
       );
     }
 
-    // ✅ Now: "My Requests & Steps" matches your screenshot (cards row),
-    // and clicking a card switches the step detail below (TabBarView).
     return DefaultTabController(
       key: ValueKey("loan_${widget.loanId}_tabs_${processes.length}"),
       length: processes.length,
@@ -666,9 +1018,9 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                           _buildUtilizationCard(),
                           const SizedBox(height: 12),
                           _buildDetailsCard(),
+                          const SizedBox(height: 10),
+                          _buildNoticeCardBetween(), // ✅ NOTICE HERE (between loan card and steps)
                           const SizedBox(height: 14),
-
-                          // ✅ THIS SECTION IS THE ONE YOU ASKED TO CHANGE
                           AnimatedBuilder(
                             animation: controller,
                             builder: (context, _) {
@@ -678,6 +1030,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                               );
                             },
                           ),
+
                         ],
                       ),
                     ),
@@ -685,7 +1038,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                 ];
               },
               body: TabBarView(
-                // keep swipe between step details; set NeverScrollableScrollPhysics if you want only card taps
                 children: [
                   for (final p in processes) _buildProcessTab(p),
                 ],
@@ -697,7 +1049,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     );
   }
 
-// ✅ REPLACE your existing _buildRequestsAndStepsStrip WITH THIS VERSION
   Widget _buildRequestsAndStepsStrip({
     required TabController controller,
     required List<Map<String, dynamic>> processes,
@@ -708,24 +1059,16 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
           children: [
             const Text(
               "My Requests & Steps",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: Colors.black87,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87),
             ),
             const Spacer(),
             Text(
               "${processes.length} steps",
-              style: TextStyle(
-                color: Colors.grey.shade700,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w700),
             ),
           ],
         ),
         const SizedBox(height: 10),
-
         Builder(
           builder: (context) {
             final ts = MediaQuery.textScaleFactorOf(context).clamp(1.0, 1.25);
@@ -740,7 +1083,6 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (context, i) {
                   final p = processes[i];
-                  print(p);
                   final selected = controller.index == i;
 
                   final title = _processTitle(p);
@@ -750,17 +1092,13 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
 
                   const location = "Chennai Institute of Technology";
 
-                  // 🔍 take AI score from "score"
                   final dynamic rawScore = p['score'];
                   String aiScore;
 
                   if (rawScore == null) {
                     aiScore = "1";
                   } else if (rawScore is num) {
-                    // nice formatting: 0 → "0", 18.79 → "18.8"
-                    aiScore = rawScore.toStringAsFixed(
-                      rawScore % 1 == 0 ? 0 : 1,
-                    );
+                    aiScore = rawScore.toStringAsFixed(rawScore % 1 == 0 ? 0 : 1);
                   } else {
                     aiScore = rawScore.toString();
                   }
@@ -773,7 +1111,7 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                     thumbUrl: thumb,
                     isVideo: thumb.isNotEmpty && _looksLikeVideo(thumb),
                     locationText: "Location: $location",
-                    aiScoreText: "AI Score: $aiScore", // ⭐ from p['score']
+                    aiScoreText: "AI Score: $aiScore",
                     onTap: () => controller.animateTo(i),
                   );
                 },
@@ -781,15 +1119,11 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
             );
           },
         ),
-
         const SizedBox(height: 6),
       ],
     );
   }
 
-
-
-  // Utilization card (same as the one you liked)
   Widget _buildUtilizationCard() {
     final loan = _loanAmount();
     final used = _utilizedAmountFromBackendFlexible();
@@ -838,7 +1172,8 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text("$pctInt%", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
-                          Text("Used", style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 11)),
+                          Text("Used",
+                              style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 11)),
                         ],
                       ),
                     ],
@@ -879,15 +1214,22 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     );
   }
 
-  // Applicant details card (tight spacing)
   Widget _buildDetailsCard() {
-    final loanCategory = (_details!['loan_category'] ?? '').toString().trim();
-    final loanPurpose = (_details!['loan_purpose'] ?? 'N/A').toString();
-    final beneficiaryAddress = (_details!['beneficiary_address'] ?? '').toString().trim();
-    final assetPurchased = (_details!['asset_purchased'] ?? '').toString().trim();
+    final rawDateApplied = _details?['date_applied'];
+    final rawDueDate = _details?['time_period'];
+
+    final dateApplied = _formatDateDdMmYyyy(rawDateApplied);
+    final dueDate = _formatDateDdMmYyyy(rawDueDate);
+    final showDue = (rawDueDate?.toString().trim() ?? '').isNotEmpty;
+
+    final loanCategory = (_details?['loan_category'] ?? '').toString().trim();
+    final loanPurpose = (_details?['loan_purpose'] ?? 'N/A').toString();
+    final beneficiaryAddress = (_details?['beneficiary_address'] ?? '').toString().trim();
+    final assetPurchased = (_details?['asset_purchased'] ?? '').toString().trim();
 
     final extraRows = _buildDynamicExtraRows();
-    final overallStatus = (_details!['status'] ?? 'N/A').toString();
+    final overallStatus = (_details?['status'] ?? 'N/A').toString();
+    final applicantName = (_details?['applicant_name'] ?? 'N/A').toString();
 
     return Card(
       elevation: 2,
@@ -898,21 +1240,24 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              Expanded(
-                child: Text(
-                  (_details!['applicant_name'] ?? 'N/A').toString(),
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.black87),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    applicantName,
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.black87),
+                  ),
                 ),
-              ),
-              _StatusPill(status: overallStatus.toLowerCase().trim()),
-            ]),
+                _StatusPill(status: overallStatus.toLowerCase().trim()),
+              ],
+            ),
             const SizedBox(height: 8),
-            _buildDetailRow("Loan ID", (_details!['loan_id'] ?? 'N/A').toString()),
-            _buildDetailRow("Type", (_details!['loan_type'] ?? 'N/A').toString(), wrapValue: true),
-            _buildDetailRow("Scheme", (_details!['scheme'] ?? 'N/A').toString()),
-            _buildDetailRow("Date Applied", (_details!['date_applied'] ?? 'N/A').toString()),
-            _buildDetailRow("Sanctioned Amount", "₹${_details!['amount']?.toString() ?? '0'}"),
+            _buildDetailRow("Loan ID", (_details?['loan_id'] ?? 'N/A').toString()),
+            _buildDetailRow("Type", (_details?['loan_type'] ?? 'N/A').toString(), wrapValue: true),
+            _buildDetailRow("Scheme", (_details?['scheme'] ?? 'N/A').toString()),
+            _buildDetailRow("Date Applied", dateApplied),
+            if (showDue) _buildDetailRow("Due Date", dueDate),
+            _buildDetailRow("Sanctioned Amount", "₹${_details?['amount']?.toString() ?? '0'}"),
             if (loanCategory.isNotEmpty) _buildDetailRow("Loan Category", loanCategory, wrapValue: true),
             _buildDetailRow("Loan Purpose", loanPurpose, wrapValue: true),
             if (beneficiaryAddress.isNotEmpty) _buildDetailRow("Beneficiary Address", beneficiaryAddress, wrapValue: true),
@@ -957,104 +1302,13 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
     );
   }
 
-// ✅ REPLACE _buildProcessTab WITH THIS
   Widget _buildProcessTab(Map<String, dynamic> p) {
-    // No extra UI per tab – the cards above (slider) already show
-    // photo + location + AI score + status.
-    // Keeping this non-scrollable so the page feels fixed.
     return const SizedBox.shrink();
-  }
-
-
-
-  Widget _buildMediaCarousel({
-    required String processId,
-    required List<String> urls,
-    required int currentIndex,
-  }) {
-    return Card(
-      elevation: 2,
-      shadowColor: Colors.black.withOpacity(0.06),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Column(
-          children: [
-            SizedBox(
-              height: 260,
-              child: PageView.builder(
-                itemCount: urls.length,
-                onPageChanged: (i) => setState(() => _carouselIndexByProcess[processId] = i),
-                itemBuilder: (context, i) {
-                  final url = urls[i];
-
-                  if (_looksLikeVideo(url)) {
-                    return Container(
-                      color: Colors.black,
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 64),
-                            const SizedBox(height: 10),
-                            const Text("360 Video", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-                            const SizedBox(height: 10),
-                            TextButton.icon(
-                              onPressed: () => _openExternal(url),
-                              icon: const Icon(Icons.open_in_new_rounded),
-                              label: const Text("Open"),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                backgroundColor: Colors.white24,
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-
-                  return Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (ctx, child, progress) => (progress == null)
-                        ? child
-                        : Container(color: Colors.grey[200], child: const Center(child: CircularProgressIndicator())),
-                    errorBuilder: (_, __, ___) =>
-                        Container(color: Colors.grey[200], child: const Center(child: Icon(Icons.broken_image, size: 40))),
-                  );
-                },
-              ),
-            ),
-            if (urls.length > 1)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(urls.length, (i) {
-                    final active = i == currentIndex;
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      width: active ? 18 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: active ? _brandBlue : Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
-// ✅ REPLACE your existing _StepCard WITH THIS VERSION
+// ------------------- CARDS / PILLS / PREVIEW -------------------
+
 class _StepCard extends StatelessWidget {
   final int index;
   final String title;
@@ -1089,7 +1343,6 @@ class _StepCard extends StatelessWidget {
       case 'retake':
         return Colors.amber;
       default:
-      // not verified / pending
         return Colors.grey;
     }
   }
@@ -1107,26 +1360,17 @@ class _StepCard extends StatelessWidget {
       showDialog(
         context: context,
         barrierDismissible: true,
-        builder: (_) => _MediaPreviewDialog(
-          url: thumbUrl,
-          isVideo: isVideo,
-        ),
+        builder: (_) => _MediaPreviewDialog(url: thumbUrl, isVideo: isVideo),
       );
     }
 
-    // bigger thumbnail height
-    const double h = 86; // 👈 increase size (was ~60)
+    const double h = 86;
 
     if (thumbUrl.trim().isEmpty) {
       return Container(
         height: h,
-        decoration: BoxDecoration(
-          color: Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(
-          child: Icon(Icons.image_not_supported_outlined, color: Colors.grey),
-        ),
+        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12)),
+        child: const Center(child: Icon(Icons.image_not_supported_outlined, color: Colors.grey)),
       );
     }
 
@@ -1136,13 +1380,8 @@ class _StepCard extends StatelessWidget {
         onTap: openPreview,
         child: Container(
           height: h,
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Center(
-            child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 46),
-          ),
+          decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)),
+          child: const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 46)),
         ),
       );
     }
@@ -1157,8 +1396,9 @@ class _StepCard extends StatelessWidget {
           height: h,
           width: double.infinity,
           fit: BoxFit.cover,
-          loadingBuilder: (ctx, child, progress) =>
-          progress == null ? child : Container(height: h, color: Colors.grey[200], child: const Center(child: CircularProgressIndicator())),
+          loadingBuilder: (ctx, child, progress) => progress == null
+              ? child
+              : Container(height: h, color: Colors.grey[200], child: const Center(child: CircularProgressIndicator())),
           errorBuilder: (_, __, ___) => Container(
             height: h,
             color: Colors.grey.shade200,
@@ -1169,13 +1409,9 @@ class _StepCard extends StatelessWidget {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
-    final border = selected
-        ? _brandBlue.withOpacity(0.55)
-        : Colors.grey.withOpacity(0.18);
-
+    final border = selected ? _brandBlue.withOpacity(0.55) : Colors.grey.withOpacity(0.18);
     final statusColor = _statusColor();
 
     return SizedBox(
@@ -1191,35 +1427,19 @@ class _StepCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: border, width: selected ? 1.2 : 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 10,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 6))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // top row: step index + title
                 Row(
                   children: [
                     Container(
                       width: 32,
                       height: 32,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _brandBlue.withOpacity(0.10),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        "${index + 1}",
-                        style: const TextStyle(
-                          color: _brandBlue,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
+                      decoration: BoxDecoration(color: _brandBlue.withOpacity(0.10), shape: BoxShape.circle),
+                      child: Text("${index + 1}", style: const TextStyle(color: _brandBlue, fontWeight: FontWeight.w900)),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -1227,73 +1447,44 @@ class _StepCard extends StatelessWidget {
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: Colors.black87,
-                        ),
+                        style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.black87),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
-
-                // thumbnail
                 _thumb(context),
                 const SizedBox(height: 6),
-
-                // location + AI score INSIDE the card (only here)
                 Text(
                   locationText,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.grey.shade800,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w700, fontSize: 12),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   aiScoreText,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.indigo,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.w900, fontSize: 12),
                 ),
-
                 const SizedBox(height: 6),
-
-                // bottom row: translucent pill + chevron
                 Row(
                   children: [
                     Container(
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: statusColor.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: statusColor.withOpacity(0.25),
-                        ),
+                        border: Border.all(color: statusColor.withOpacity(0.25)),
                       ),
                       child: Text(
                         _statusLabel(),
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 11,
-                        ),
+                        style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 11),
                       ),
                     ),
                     const Spacer(),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: Colors.grey.shade400,
-                      size: 22,
-                    ),
+                    Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400, size: 22),
                   ],
                 ),
               ],
@@ -1304,8 +1495,6 @@ class _StepCard extends StatelessWidget {
     );
   }
 }
-
-
 
 class _StatusPill extends StatelessWidget {
   final String status;
@@ -1352,10 +1541,7 @@ class _StatusPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: _fg().withOpacity(0.22)),
       ),
-      child: Text(
-        _label(),
-        style: TextStyle(fontWeight: FontWeight.w900, color: _fg(), fontSize: 12),
-      ),
+      child: Text(_label(), style: TextStyle(fontWeight: FontWeight.w900, color: _fg(), fontSize: 12)),
     );
   }
 }
@@ -1387,11 +1573,11 @@ class _MediaPreviewDialog extends StatelessWidget {
                   children: [
                     const Icon(Icons.play_circle_fill_rounded, size: 80, color: Colors.white),
                     const SizedBox(height: 10),
-                    const Text("Video preview", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                    const Text("Video preview",
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 14),
                     ElevatedButton.icon(
                       onPressed: () async {
-                        // keep your external open behavior
                         final uri = Uri.parse(url);
                         await launchUrl(uri, mode: LaunchMode.externalApplication);
                       },
@@ -1414,8 +1600,6 @@ class _MediaPreviewDialog extends StatelessWidget {
               ),
             ),
           ),
-
-          // close button
           Positioned(
             top: 10,
             right: 10,
@@ -1430,4 +1614,5 @@ class _MediaPreviewDialog extends StatelessWidget {
     );
   }
 }
+
 

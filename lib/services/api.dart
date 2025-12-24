@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
 // Change this to your Flask host - REMOVED trailing slash to prevent double slashes
-const String kBaseUrl = 'http://10.10.11.253:5000 /';
+const String kBaseUrl = 'http://172.20.10.11:5000/';
 
 final Connectivity _connectivity = Connectivity();
 
