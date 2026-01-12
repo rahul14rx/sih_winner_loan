@@ -1,5 +1,5 @@
 # Loan Utilization Tracking System  
-### AI-Driven, Fraud-Resistant End-User Expense Verification
+### AI-Driven, Fraud-Resistant End-User Expense Verification 
 
 > Ensuring that sanctioned funds are utilized **only for their intended purpose**, with verifiable proof at every step.
 
