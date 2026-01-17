@@ -1,10 +1,15 @@
+
+![1765304968088](https://github.com/user-attachments/assets/753d9ddf-2eb7-483d-8256-774dff59d6b8)
+
+
+
+
 # Loan Utilization Tracking System   
 ### AI-Driven, Fraud-Resistant End-User Expense Verification 
 
 > Ensuring that sanctioned funds are utilized **only for their intended purpose**, with verifiable proof at every step.
 
 ---
-
 ## Problem Statement
 
 Post-disbursement loan monitoring is largely opaque. Existing systems lack:
