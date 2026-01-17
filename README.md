@@ -72,3 +72,6 @@ using AI-based verification and cryptographic integrity guarantees.
 
 ## System Architecture
 
+
+<img width="1063" height="588" alt="Screenshot 2026-01-17 123541" src="https://github.com/user-attachments/assets/ae45cadd-2163-42c4-b5ad-c2de1debac77" />
+
